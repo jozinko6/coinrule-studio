@@ -738,3 +738,32 @@ All 26 phases are DONE or DONE(core). The only open items are externally blocked
 TESTNET/LIVE round trip (no credentials in this environment; everything is verified against the
 deterministic mock exchange and independent harnesses) and GitHub Actions (the account is locked due
 to a billing issue; the workflow itself is active and correct).
+
+
+# Long-run upgrade — cycle 19 (2026-09-18): testnet smoke harness ready
+
+## Owner decisions (recorded)
+- GitHub Actions is INTENTIONALLY inactive: the owner will not pay for it. The workflow file stays
+  (it is correct), but the local `node tools/verify.mjs` gate is the source of truth; it is verified
+  from fresh clones, which is what the hygiene gate protects.
+- Next step for Phase 25 is a real TESTNET round trip, which needs testnet API keys.
+
+## Delivered: tools/testnet-smoke.mjs
+- One command: health -> credentials (RAM) -> mode TESTNET -> session -> reconcile -> kill switch off
+  -> LIMIT buy far below market -> orders -> cancel -> stream start/stop -> kill switch ON -> paper.
+- Secrets come ONLY from the environment (`COINRULE_ADMIN_TOKEN`, `COINRULE_BINANCE_KEY`,
+  `COINRULE_BINANCE_SECRET`); they are never printed (masked), never written to disk and never sent
+  anywhere except the local backend. Requires `--confirm-testnet`; `--dry` inspects without keys.
+- Safety: aborts BEFORE placing anything when reconciliation is not ok; re-arms the kill switch on
+  every exit path (success, failure, config error); never enables LIVE.
+- Tests `tests/testnet-smoke.test.js` 7/7 with a scripted backend: call order (reconcile -> order),
+  single order, cancel, secrets only to /api/credentials, abort-on-mismatch places nothing, missing
+  credentials stop before the exchange, --dry touches nothing.
+
+## Runtime evidence
+Real `--dry` run against a locally started backend: PASS, exit 0 (clean). Also fixed a Windows-only
+crash: abrupt `process.exit()` right after fetch trips a libuv assertion (UV_HANDLE_CLOSING); the CLI
+now uses `process.exitCode` and lets the loop drain.
+
+## Verification
+Full gate: lint 99 files 0 warnings, 401/401 tests, smoke 38 assets, repo-hygiene 96/0 — PASS (4/4).

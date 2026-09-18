@@ -87,7 +87,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 12 Reconciliation | **DONE (core)** | server/services/reconciliation.mjs (UNKNOWN/PENDING resolution, external-order import + mismatch, idempotent fills, never-accepted -> REJECTED), tests/reconciliation.test.js 7/7 |
 | 13 User data stream | pending | — |
 | 14 ExecutionBroker interface | **DONE (core)** | server/services/execution-broker.mjs: mode -> reconciliation -> risk -> filters -> idempotency, cancels allowed under kill switch, tests 8/8 |
-| 15 Action handler completeness | pending | — |
+| 15 Action handler completeness | **DONE (core)** | server/app.mjs API: token auth, /api/{status,mode,risk,credentials,sessions,orders,cancel,reconcile}; server/services/trading-context.mjs; tests/api.test.js 5/5 end-to-end |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
 | 23 Tests (full list) | in progress | 353 tests; +1 hardening (withdrawal encoding/prefixes, mode ctor, assumptions) |
 | 17 Multi-strategy accounting | pending | — |
@@ -99,7 +99,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 
 | 24 Binance mock server | **DONE** | server/exchange/mock.mjs (signature/recvWindow checks, 401/403/429/418/500, timeout-after-accept, partial fill, duplicate id) |
 | 25 Testnet opt-in integration | pending | — |
-| 26 CI | pending | — |
+| 26 CI | **DONE** | .github/workflows/verify.yml runs node tools/verify.mjs on push/PR (Node 24) + uploads the report |
 
 ## Non-negotiables carried forward
 - No API keys/secrets in localStorage, frontend state, logs, URLs, exports or git.

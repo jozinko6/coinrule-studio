@@ -459,3 +459,35 @@ Phases pending/partial: 2 (kline WS reconnect/stale), 4 (History UI), 13 (user d
 write model), 19 (Settings UI Binance), 20 (Dashboard modes), 25 (testnet opt-in integration),
 26 (CI). Phase 23 stays in progress until those land. Exchange round-trips are mock-verified only —
 no real testnet credentials were available in this environment.
+
+
+# Long-run upgrade — cycle 9 (2026-09-18): HTTP action handlers + CI
+
+## Delivered
+- `server/services/trading-context.mjs` — owns the whole live stack: mode manager, risk guard,
+  idempotency, rule cache, exchange client (rebuilt on mode change because testnet/live hosts differ),
+  reconciler and broker. Credentials come from env or the Settings API and live in RAM only;
+  `applyCredentials`/`clearCredentials`, `startSession`, `reconcile`, `snapshot`.
+- `server/app.mjs` — full Phase-15 API:
+  * session admin token (env `COINRULE_ADMIN_TOKEN` or generated at start, printed once to the local
+    console, sent as `X-CoinRule-Token`); every /api route except health/ping is 401 without it;
+  * GET /api/status, /api/mode, /api/risk, /api/sessions, /api/orders;
+  * POST /api/mode (paper/offline/testnet/live/disable with typed confirm), /api/risk/killswitch,
+    /api/credentials (never echoed), /api/sessions, /api/sessions/reconcile, /api/orders,
+    /api/orders/cancel; DELETE /api/credentials;
+  * typed error mapping: 409 risk/refused, 400 mode, 502 exchange, 504 timeout, 400 bad JSON, 413 body;
+  * CORS still loopback-only and evaluated before auth; unknown API routes require the token then 404.
+- Tests `tests/api.test.js` 5/5: token wall, credential non-echo, mode transitions through HTTP,
+  the FULL flow (reconcile -> kill switch -> place -> duplicate intent skipped -> list -> limit ->
+  cancel -> filter refusal with unchanged exchange counters), CORS vs malformed origin.
+- Phase 26: `.github/workflows/verify.yml` — Node 24 on ubuntu-latest runs the exact gate and
+  uploads `.longrun/verification_report.json` as an artifact.
+
+## Verification
+Full gate: lint 87 files 0 warnings, 358/358 tests, smoke 35 assets — PASS (3/3).
+
+## Next safe step
+Phase 19/20 UI: Settings panel (backend URL, admin token, credentials form posting to
+/api/credentials, mode buttons with typed confirm, kill switch, health/db status) and a Dashboard
+mode badge fed by /api/status; then Phase 4 History UI over the DB API (runs + trades + equity).
+Followed by Phase 13 user-data-stream polling fallback and Phases 2/17/18.

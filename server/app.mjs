@@ -1,21 +1,29 @@
 /**
- * app.mjs — the local CoinRule Studio backend (Phase 6).
+ * app.mjs — the local CoinRule Studio backend (Phases 6 + 15).
  *
  * Design rules:
  *   - binds 127.0.0.1 by default; 0.0.0.0 requires an explicit env opt-in;
  *   - serves the frontend from the project root (one process = one-click start);
  *   - /api/* is JSON only, CORS limited to loopback origins;
+ *   - every /api route except health/ping requires the session admin token,
+ *     which is printed to the local console and stored in RAM only;
  *   - GET /api/health reports database + mode so the launcher can wait for it;
  *   - default mode is PAPER; live trading can never be enabled implicitly.
  */
 
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MIME, resolvePath } from '../tools/serve.mjs';
 import { defaultDbPath, openDatabase, appliedMigrations } from './db/database.mjs';
 import { SCHEMA_VERSION } from './db/migrations.mjs';
+import { createTradingContext } from './services/trading-context.mjs';
+import { BinanceApiError, BinanceTimeoutError } from './exchange/binance-private.mjs';
+import { RiskViolation } from './services/live-risk.mjs';
+import { ModeTransitionError } from './services/mode.mjs';
+import { ExecutionRefused } from './services/execution-broker.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, '..');
@@ -23,6 +31,9 @@ export const APP_VERSION = '1.0.0';
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_PORT = 8787;
 export const ALLOW_LAN_ENV = 'COINRULE_ALLOW_LAN';
+export const ADMIN_TOKEN_ENV = 'COINRULE_ADMIN_TOKEN';
+export const ADMIN_HEADER = 'X-CoinRule-Token';
+export const MAX_BODY_BYTES = 256 * 1024;
 
 const LOOPBACK_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
@@ -52,8 +63,37 @@ function sendText(res, status, text, type = 'text/plain; charset=utf-8') {
   res.end(text);
 }
 
-export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now(), quiet = true } = {}) {
+function readJson(req, { limit = MAX_BODY_BYTES } = {}) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) { reject(Object.assign(new Error('Telo požiadavky je príliš veľké.'), { statusCode: 413 })); req.destroy(); return; }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (!chunks.length) return resolve({});
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+      catch { reject(Object.assign(new Error('Neplatný JSON.'), { statusCode: 400 })); }
+    });
+    req.on('error', reject);
+  });
+}
+
+function errorResponse(err) {
+  if (err instanceof RiskViolation) return { status: 409, body: { ok: false, error: 'risk', check: err.check, message: err.message, details: err.details } };
+  if (err instanceof ExecutionRefused) return { status: 409, body: { ok: false, error: 'refused', check: err.check, message: err.message, details: err.details } };
+  if (err instanceof ModeTransitionError) return { status: 400, body: { ok: false, error: 'mode', reason: err.reason, message: err.message } };
+  if (err instanceof BinanceTimeoutError) return { status: 504, body: { ok: false, error: 'timeout', code: err.code, message: err.message, requestAccepted: err.requestAccepted } };
+  if (err instanceof BinanceApiError) return { status: 502, body: { ok: false, error: 'exchange', status: err.status, code: err.code, message: err.message, retryAfter: err.retryAfter } };
+  const status = err?.statusCode ?? 500;
+  return { status, body: { ok: false, error: status >= 500 ? 'internal' : 'bad_request', message: err.message } };
+}
+
+export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now(), quiet = true, adminToken = null, trading = null } = {}) {
   const startedAt = clock();
+  const token = adminToken ?? process.env[ADMIN_TOKEN_ENV] ?? crypto.randomBytes(24).toString('hex');
   let db = null;
   let dbError = null;
   try {
@@ -62,13 +102,22 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
     dbError = err?.message ?? String(err);
   }
 
+  let context = null;
+  if (db) {
+    try {
+      context = typeof trading === 'function' ? trading(db) : (trading ?? createTradingContext({ db, clock }));
+    } catch (err) {
+      dbError = `trading context: ${err?.message ?? err}`;
+    }
+  }
+
   const state = {
-    mode: 'paper',
-    liveEnabled: false,
     startedAt,
     requests: 0,
     lastRequestAt: null,
   };
+
+  const currentMode = () => context?.mode?.mode ?? 'paper';
 
   function health() {
     let dbInfo = { ok: false, error: dbError ?? 'not opened' };
@@ -87,8 +136,9 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
       version: APP_VERSION,
       host: DEFAULT_HOST,
       uptimeMs: clock() - startedAt,
-      mode: state.mode,
-      liveEnabled: state.liveEnabled,
+      mode: currentMode(),
+      liveEnabled: Boolean(context?.mode?.isLive),
+      authRequired: true,
       db: dbInfo,
       requests: state.requests,
     };
@@ -116,39 +166,131 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
     });
   }
 
-  function handleApi(req, res, urlPath) {
+  function assertToken(req, res) {
+    const provided = req.headers[ADMIN_HEADER.toLowerCase()] ?? req.headers[ADMIN_HEADER];
+    if (!provided || provided !== token) {
+      sendJson(res, 401, { ok: false, error: 'unauthorized', message: `Chýba alebo nesprávny ${ADMIN_HEADER} header.` });
+      return false;
+    }
+    return true;
+  }
+
+  async function handleApi(req, res, urlPath, url) {
     const origin = req.headers.origin;
     if (!originAllowed(origin)) {
       return sendJson(res, 403, { ok: false, error: 'cors', message: 'Povolené sú len lokálne (loopback) pôvody.' });
     }
     const headers = origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {};
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, { ...headers, 'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' });
+      res.writeHead(204, { ...headers, 'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS', 'Access-Control-Allow-Headers': `Content-Type, ${ADMIN_HEADER}`, 'Access-Control-Max-Age': '600' });
       return res.end();
     }
+    const respond = (status, body) => sendJson(res, status, body, headers);
+
     if (urlPath === '/api/health' && req.method === 'GET') {
       const body = health();
-      return sendJson(res, body.ok ? 200 : 503, body, headers);
+      return respond(body.ok ? 200 : 503, body);
     }
-    if (urlPath === '/api/ping' && req.method === 'GET') {
-      return sendJson(res, 200, { ok: true, pong: true }, headers);
+    if (urlPath === '/api/ping' && req.method === 'GET') return respond(200, { ok: true, pong: true });
+
+    if (!assertToken(req, res)) return;
+    if (!context) return respond(503, { ok: false, error: 'db_unavailable', message: dbError ?? 'Databáza nie je pripravená.' });
+
+    if (urlPath === '/api/status' && req.method === 'GET') return respond(200, { ok: true, ...context.snapshot() });
+    if (urlPath === '/api/mode' && req.method === 'GET') return respond(200, { ok: true, ...context.mode.snapshot() });
+    if (urlPath === '/api/risk' && req.method === 'GET') return respond(200, { ok: true, ...context.guard.snapshot() });
+    if (urlPath === '/api/sessions' && req.method === 'GET') return respond(200, { ok: true, sessions: context.listSessions(20) });
+
+    if (urlPath === '/api/mode' && req.method === 'POST') {
+      const body = await readJson(req);
+      const action = String(body.action ?? '');
+      if (action === 'paper') context.mode.goPaper();
+      else if (action === 'offline') context.mode.goOffline();
+      else if (action === 'testnet') context.mode.goTestnet();
+      else if (action === 'live') context.mode.enableLive({ confirm: body.confirm, acknowledgeRisk: body.acknowledgeRisk });
+      else if (action === 'disable') context.mode.disableLive();
+      else throw Object.assign(new Error(`Neznáma akcia: ${action}`), { statusCode: 400 });
+      return respond(200, { ok: true, ...context.mode.snapshot() });
     }
-    return sendJson(res, 404, { ok: false, error: 'not_found', message: `Neznáma API cesta: ${urlPath}` }, headers);
+
+    if (urlPath === '/api/risk/killswitch' && req.method === 'POST') {
+      const body = await readJson(req);
+      context.guard.setKillSwitch(Boolean(body.engaged));
+      return respond(200, { ok: true, ...context.guard.snapshot() });
+    }
+
+    if (urlPath === '/api/credentials' && req.method === 'POST') {
+      const body = await readJson(req);
+      context.applyCredentials({ key: body.key, secret: body.secret });
+      return respond(200, { ok: true, credentials: context.snapshot().credentials });
+    }
+    if (urlPath === '/api/credentials' && req.method === 'DELETE') {
+      context.clearCredentials();
+      return respond(200, { ok: true, credentials: context.snapshot().credentials });
+    }
+
+    if (urlPath === '/api/sessions' && req.method === 'POST') {
+      const body = await readJson(req);
+      const session = context.startSession({ environment: body.environment ?? context.mode.mode, symbol: body.symbol ?? null });
+      return respond(201, { ok: true, session });
+    }
+    if (urlPath === '/api/sessions/reconcile' && req.method === 'POST') {
+      const body = await readJson(req);
+      const report = await context.reconcile(String(body.sessionId ?? ''));
+      return respond(report.state === 'failed' ? 502 : 200, { ok: report.state !== 'failed', report });
+    }
+
+    if (urlPath === '/api/orders' && req.method === 'GET') {
+      const sessionId = url.searchParams.get('sessionId');
+      if (!sessionId) throw Object.assign(new Error('Chýba sessionId.'), { statusCode: 400 });
+      return respond(200, { ok: true, orders: context.listOrders(sessionId) });
+    }
+    if (urlPath === '/api/orders' && req.method === 'POST') {
+      const body = await readJson(req);
+      const session = context.getSession(String(body.sessionId ?? ''));
+      const result = await context.broker.placeOrder({
+        session,
+        symbol: body.symbol, side: body.side, type: body.type,
+        quantity: body.quantity, price: body.price ?? null, referencePrice: body.referencePrice ?? null,
+        intentId: body.intentId, reduceOnly: Boolean(body.reduceOnly),
+      });
+      return respond(200, { ok: true, ...result });
+    }
+    if (urlPath === '/api/orders/cancel' && req.method === 'POST') {
+      const body = await readJson(req);
+      const session = context.getSession(String(body.sessionId ?? ''));
+      const result = await context.broker.cancelOrder({
+        session, symbol: body.symbol, orderId: body.orderId ?? null, clientOrderId: body.clientOrderId ?? null,
+      });
+      return respond(200, { ok: true, order: result });
+    }
+
+    return respond(404, { ok: false, error: 'not_found', message: `Neznáma API cesta: ${urlPath}` });
   }
 
   const server = http.createServer((req, res) => {
     state.requests += 1;
     state.lastRequestAt = clock();
-    const urlPath = (req.url ?? '/').split('?')[0];
-    if (urlPath === '/api' || urlPath.startsWith('/api/')) return handleApi(req, res, urlPath);
+    const url = new URL(req.url ?? '/', `http://${DEFAULT_HOST}`);
+    const urlPath = url.pathname;
+    if (urlPath === '/api' || urlPath.startsWith('/api/')) {
+      handleApi(req, res, urlPath, url).catch((err) => {
+        const { status, body } = errorResponse(err);
+        if (!res.headersSent) sendJson(res, status, body);
+        else res.end();
+      });
+      return;
+    }
     return serveStatic(req, res, req.url ?? '/');
   });
 
   const app = {
     server,
     state,
+    adminToken: token,
     get db() { return db; },
     get dbError() { return dbError; },
+    get trading() { return context; },
     health,
     url() {
       const address = server.address();
@@ -171,11 +313,11 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
   return app;
 }
 
-export function startApp({ port = DEFAULT_PORT, host = DEFAULT_HOST, root = ROOT, dbPath = null, quiet = false } = {}) {
+export function startApp({ port = DEFAULT_PORT, host = DEFAULT_HOST, root = ROOT, dbPath = null, quiet = false, adminToken = null, trading = null } = {}) {
   if (!isLoopbackHost(host) && process.env[ALLOW_LAN_ENV] !== '1') {
     return Promise.reject(new Error(`Odmietnuté: host ${host} nie je loopback. Pre LAN nastav ${ALLOW_LAN_ENV}=1 (nedporúčané).`));
   }
-  const app = createApp({ root, dbPath, quiet });
+  const app = createApp({ root, dbPath, quiet, adminToken, trading });
   return new Promise((resolve, reject) => {
     app.server.once('error', reject);
     app.server.listen(port, host, () => {
@@ -183,7 +325,8 @@ export function startApp({ port = DEFAULT_PORT, host = DEFAULT_HOST, root = ROOT
       const url = `http://${host}:${actual}`;
       if (!quiet) {
         const status = app.health();
-        process.stdout.write(`\n  CoinRule Studio backend\n  ${url}\n  mód: ${status.mode}  db: ${status.db.ok ? 'ok' : 'CHYBA'}  live: ${status.liveEnabled ? 'ON' : 'off'}\n  (Ctrl+C pre ukončenie)\n\n`);
+        process.stdout.write(`\n  CoinRule Studio backend\n  ${url}\n  mód: ${status.mode}  db: ${status.db.ok ? 'ok' : 'CHYBA'}  live: ${status.liveEnabled ? 'ON' : 'off'}\n`);
+        process.stdout.write(`  admin token (ulož si ho do Settings): ${app.adminToken}\n  (Ctrl+C pre ukončenie)\n\n`);
       }
       resolve({ app, server: app.server, port: actual, url });
     });

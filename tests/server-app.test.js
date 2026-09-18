@@ -84,10 +84,13 @@ test('traversal and private files are refused', async () => {
   }
 });
 
-test('unknown API routes return a JSON 404', async () => {
+test('unknown API routes require the admin token, then return a JSON 404', async () => {
   const b = await boot();
   try {
-    const res = await fetch(`${b.url}/api/nope`);
+    const anonymous = await fetch(`${b.url}/api/nope`);
+    assert.equal(anonymous.status, 401, 'no API surface may be reachable without the token');
+
+    const res = await fetch(`${b.url}/api/nope`, { headers: { 'X-CoinRule-Token': b.app.adminToken } });
     assert.equal(res.status, 404);
     const body = await res.json();
     assert.equal(body.ok, false);

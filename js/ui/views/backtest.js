@@ -1,6 +1,6 @@
 /** backtest.js — configure and run a historical simulation, then inspect it. */
 
-import { h, stat, table, pill, toast, download, fmtNum, fmtMoney, fmtPct, fmtDate, fmtQty, fmtDuration, signClass } from '../dom.js';
+import { h, stat, table, pill, toast, confirmDialog, download, fmtNum, fmtMoney, fmtPct, fmtDate, fmtQty, fmtDuration, signClass } from '../dom.js';
 import { drawEquity, drawBars, drawCandles } from '../charts.js';
 import { state, store, emit, navigate, loadCandles } from '../state.js';
 import { getBackendClient } from '../backend-session.js';
@@ -129,6 +129,8 @@ function historyCard() {
         h('button', {
           class: 'icon-btn', type: 'button',
           onclick: () => { void (async () => {
+            const yes = await confirmDialog('Zmazať tento uložený backtest z databázy?', { danger: true, confirmLabel: 'Zmazať' });
+            if (!yes) return;
             try { await client.deleteBacktest(run.id); toast('Zmazané', 'ok'); await refresh(); }
             catch (err) { toast(err.message, 'err'); }
           })(); },

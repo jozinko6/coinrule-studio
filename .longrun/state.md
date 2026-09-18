@@ -711,3 +711,30 @@ of the correct attribution output) — the test reuses one strategy instance ins
 ## Remaining
 Phase 25 real TESTNET round trip (needs credentials), CI (GitHub billing lock, external). All other
 phases are DONE or DONE(core).
+
+
+# Long-run upgrade — cycle 18 (2026-09-18): final audit VERIFIED + residual fixes
+
+## Final independent audit (long-run-verifier, HEAD 0ac7c1f) — VERIFIED
+- Gate 4/4 reproduced; targeted suites 39/39; own adversarial attribution harness 16/16 (forced
+  end_of_backtest trade keeps strategyId AND ruleId, per-strategy net reconciles, explicit
+  'unassigned' bucket for null-strategy trades);
+- History API from an own server boot: 17/17 - all four routes 401 without the token; with the token
+  201/200/200/200 then 404 after delete, 400 without result, trades + equityCurve round-trip;
+- fresh clone: gate PASS 4/4 with identical numbers (97/393/38/94), origin == HEAD, no skipped tests,
+  no deletions, +183 assert lines vs -5 schema-count updates;
+- disk end-state: C: free 17.43 GB, TEMP 0.40 GB, npm cache 0.59 GB, project untouched.
+
+## Residuals from the audit fixed immediately
+1. `perStrategyBreakdown(null)` no longer throws (array-normalising) + test for null/string/non-string name.
+2. Name sorting is guarded with String(...) so a malformed imported name cannot crash the sort.
+3. The History card's delete now asks for confirmation before removing a stored run.
+
+## Verification after the fixes
+Full gate: lint 97 files 0 warnings, 394/394 tests, smoke 38 assets, repo-hygiene 94/0 — PASS (4/4).
+
+## Status
+All 26 phases are DONE or DONE(core). The only open items are externally blocked: a real
+TESTNET/LIVE round trip (no credentials in this environment; everything is verified against the
+deterministic mock exchange and independent harnesses) and GitHub Actions (the account is locked due
+to a billing issue; the workflow itself is active and correct).

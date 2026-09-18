@@ -126,3 +126,10 @@ test('two same-symbol strategies run serially on one position and stay attributa
   assert.ok(Math.abs(sumNet - tradesNet) < 0.05);
   assert.equal(rows.reduce((acc, r) => acc + r.trades, 0), res.trades.length);
 });
+test('null or malformed input never crashes the breakdown', () => {
+  assert.deepEqual(perStrategyBreakdown(null), []);
+  assert.deepEqual(perStrategyBreakdown('nope'), []);
+  const rows = perStrategyBreakdown([trade({ strategyId: 's1', strategyName: 42, netPnl: 1 })]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].strategyName, 42);
+});

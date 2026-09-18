@@ -17,8 +17,9 @@ const pct = (value) => Math.round((Number(value) || 0) * 10) / 10;
  */
 export function perStrategyBreakdown(trades = [], { strategyNames = {}, startingCash = 0 } = {}) {
   const buckets = new Map();
+  const list = Array.isArray(trades) ? trades : [];
 
-  for (const trade of trades) {
+  for (const trade of list) {
     const id = trade?.strategyId ?? 'unassigned';
     const bucket = buckets.get(id) ?? {
       strategyId: id,
@@ -66,5 +67,5 @@ export function perStrategyBreakdown(trades = [], { strategyNames = {}, starting
     avgDurationMs: bucket.trades ? Math.round(bucket.durationMsTotal / bucket.trades) : 0,
     returnOnDeployedPct: bucket.capitalDeployed > 0 ? pct((bucket.netPnl / bucket.capitalDeployed) * 100) : 0,
     portfolioPnlPct: startingCash > 0 ? pct((bucket.netPnl / startingCash) * 100) : 0,
-  })).sort((a, b) => (b.netPnl - a.netPnl) || a.strategyName.localeCompare(b.strategyName));
+  })).sort((a, b) => (b.netPnl - a.netPnl) || String(a.strategyName ?? '').localeCompare(String(b.strategyName ?? '')));
 }

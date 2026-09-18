@@ -278,7 +278,7 @@ export function listPaperSessions(db, { limit = 50 } = {}) {
 
 /* ------------------------------------------------------------------- audit */
 
-const SECRET_KEY = /(secret|api[_-]?key|signature|authorization|password|passphrase|token)/i;
+const SECRET_KEY = /(secret|api[_-]?key|private[_-]?key|access[_-]?key|\bkey\b|signature|authorization|password|passphrase|token|seed|mnemonic)/i;
 
 /** Recursively redact anything that looks like a credential. */
 export function redactSecrets(value, depth = 0) {

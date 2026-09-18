@@ -70,11 +70,24 @@ test('raw payloads are redacted before they enter the trail', () => {
   try {
     const event = appendOrderEvent(db, {
       clientOrderId: 'cr-e3', sessionId: session.id, status: 'NEW',
-      raw: { ok: true, apiKey: 'super-secret-value', nested: { signature: 'sig-value', note: 'keep-me' } },
+      raw: {
+        ok: true, apiKey: 'super-secret-value', nested: { signature: 'sig-value', note: 'keep-me' },
+        accessKey: 'access-value', privateKey: 'private-value', seed: 'seed-value',
+      },
     });
     assert.ok(event.raw_json.includes('keep-me'), 'non-secret data survives');
-    assert.ok(!event.raw_json.includes('super-secret-value'));
-    assert.ok(!event.raw_json.includes('sig-value'));
+    for (const secret of ['super-secret-value', 'sig-value', 'access-value', 'private-value', 'seed-value']) {
+      assert.ok(!event.raw_json.includes(secret), `${secret} must be redacted`);
+    }
+
+    // the live_orders row itself must not keep an unredacted copy either
+    insertLiveOrder(db, {
+      sessionId: session.id, clientOrderId: 'cr-e4', symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET',
+      qty: 0.001, status: 'PENDING', raw: { secret: 'row-secret-value', keep: 'visible' },
+    });
+    const row = db.prepare("SELECT raw_json FROM live_orders WHERE client_order_id = 'cr-e4'").get();
+    assert.ok(row.raw_json.includes('visible'));
+    assert.ok(!row.raw_json.includes('row-secret-value'));
   } finally {
     cleanup();
   }

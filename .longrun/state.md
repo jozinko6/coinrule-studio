@@ -541,3 +541,38 @@ Full gate: lint 92 files 0 warnings, 377/377 tests, smoke 35 assets — PASS (3/
 Phase 19/20 UI wiring (Settings: token/credentials/mode/kill switch/stream; Dashboard mode badge),
 Phase 4 History UI over the DB/API, Phase 17 multi-strategy accounting. Independent verifier should
 re-audit the API + stream + append-only surface.
+
+
+# Long-run upgrade — cycle 13 (2026-09-18): second independent audit + residual fixes
+
+## Verifier result (long-run-verifier, read-only, HEAD e4b911b)
+**VERIFIED** across A-G with its own harnesses:
+- gate re-run: lint 92 / 377 tests / smoke — PASS; full-suite run 377/377, 0 skipped/todo;
+- API: 17 private routes 401 tokenless, health/ping public; credentials never echoed (raw-text scan);
+  paper->live refused, live needs BOTH confirm and acknowledgement; pipeline refusals with signed=0
+  (paper/reconciliation/kill switch/filters); duplicate intent -> placed stays 1; wrong/empty/query
+  token all 401; origin spoofs (127.0.0.1.evil.com, Origin:null) 403;
+- poller: backoff 2s->60s cap; stale engages kill switch exactly once; recovery NEVER disarms;
+  stop() clears the timer, process exits in 189 ms;
+- kline stream: 8 malformed/foreign messages -> 0 throws, stale-once + reconnect, disconnect leaves
+  zero pending timers, factory failure retried;
+- append-only: UPDATE and DELETE both ABORT, no-op updates append nothing, unknown-id update throws,
+  credential-shaped keys redacted;
+- CI: workflow sane; runs fail with the annotation "account is locked due to a billing issue"
+  (external account problem, quoted verbatim);
+- repo clean, origin == HEAD, no skipped/only/todo tests, no deletions across the audit window.
+
+## Residuals fixed immediately after the audit
+1. `redactSecrets` now also matches private/access keys, bare `key`, seed, mnemonic.
+2. `live_orders.raw_json` (insert AND update) is redacted too — previously only the event trail was.
+3. Validation failures return 4xx: missing secret -> 400, unknown session -> 404, wrong session
+   environment -> 400, missing credentials for reconcile/stream -> 409 (was a generic 500).
+Tests extended: live-events redaction matrix + order-row redaction, API 4xx validation test.
+
+## Verification
+Full gate: lint 92 files 0 warnings, 378/378 tests, smoke 35 assets — PASS (3/3).
+
+## Remaining (honest scope)
+Phases 4 (History UI), 17 (multi-strategy accounting), 19 (Settings UI), 20 (Dashboard modes),
+25 (testnet opt-in UI/docs). Real-exchange round trip not possible here (no credentials); CI blocked
+by the GitHub billing lock. Phase 23 continues until the UI phases land.

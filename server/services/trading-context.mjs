@@ -86,7 +86,7 @@ export function createTradingContext({
 
     /** In-memory only; never persisted. */
     applyCredentials({ key, secret } = {}) {
-      if (!key || !secret) throw new Error('Chýba key alebo secret.');
+      if (!key || !secret) throw Object.assign(new Error('Chýba key alebo secret.'), { statusCode: 400 });
       credentials = { key: String(key), secret: String(secret) };
       clients.clear();
       rebuild();
@@ -101,15 +101,15 @@ export function createTradingContext({
 
     startSession({ environment = mode.mode, symbol = null } = {}) {
       if (environment !== 'testnet' && environment !== 'live') {
-        throw new Error('Live session môže byť len testnet/live.');
+        throw Object.assign(new Error('Live session môže byť len testnet/live.'), { statusCode: 400 });
       }
       return createLiveSession(db, { environment, symbol });
     },
     getSession(id) { return getLiveSession(db, id); },
     async reconcile(sessionId) {
       const session = getLiveSession(db, sessionId);
-      if (!session) throw new Error('Session neexistuje.');
-      if (!reconciler) throw new Error('Reconciliation vyžaduje API kľúče.');
+      if (!session) throw Object.assign(new Error('Session neexistuje.'), { statusCode: 404 });
+      if (!reconciler) throw Object.assign(new Error('Reconciliation vyžaduje API kľúče.'), { statusCode: 409 });
       return reconciler.reconcileSession(session);
     },
     listOrders(sessionId) { return listLiveOrders(db, sessionId); },
@@ -119,8 +119,8 @@ export function createTradingContext({
     startStream(sessionId, options = {}) {
       this.stopStream();
       const session = getLiveSession(db, sessionId);
-      if (!session) throw new Error('Session neexistuje.');
-      if (!reconciler) throw new Error('User data stream vyžaduje API kľúče.');
+      if (!session) throw Object.assign(new Error('Session neexistuje.'), { statusCode: 404 });
+      if (!reconciler) throw Object.assign(new Error('User data stream vyžaduje API kľúče.'), { statusCode: 409 });
       stream = new UserStreamPoller({ session, reconciler, guard, clock, ...options });
       stream.start();
       return stream.status();

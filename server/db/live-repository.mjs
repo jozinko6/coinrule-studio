@@ -66,7 +66,7 @@ export function insertLiveOrder(db, order) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(id, order.sessionId, order.clientOrderId ?? null, order.exchangeOrderId ?? null, order.intentId ?? null,
       order.symbol, order.side, order.type, order.qty, order.price ?? null, order.status,
-      order.submittedAt ?? Date.now(), Date.now(), order.raw ? JSON.stringify(order.raw) : null);
+      order.submittedAt ?? Date.now(), Date.now(), order.raw ? JSON.stringify(redactSecrets(order.raw)) : null);
   if (info.changes === 1) {
     appendOrderEvent(db, {
       clientOrderId: order.clientOrderId ?? null, sessionId: order.sessionId, status: order.status ?? 'PENDING',
@@ -88,7 +88,7 @@ export function updateLiveOrder(db, { clientOrderId, status, exchangeOrderId = n
   const before = getLiveOrderByClientId(db, clientOrderId);
   if (!before) throw new Error(`updateLiveOrder: neznámy clientOrderId ${clientOrderId}`);
   db.prepare(`UPDATE live_orders SET status = ?, exchange_order_id = COALESCE(?, exchange_order_id), raw_json = COALESCE(?, raw_json), updated_at = ? WHERE client_order_id = ?`)
-    .run(status, exchangeOrderId, raw ? JSON.stringify(raw) : null, Date.now(), clientOrderId);
+    .run(status, exchangeOrderId, raw ? JSON.stringify(redactSecrets(raw)) : null, Date.now(), clientOrderId);
   if (before.status !== status || exchangeOrderId) {
     appendOrderEvent(db, { clientOrderId, sessionId: before.session_id, status, exchangeOrderId: exchangeOrderId ?? before.exchange_order_id, raw });
   }

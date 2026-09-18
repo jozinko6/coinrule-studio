@@ -188,6 +188,25 @@ test('the full order flow works through HTTP with every gate in place', async ()
   }
 });
 
+test('validation failures return 4xx, never 500', async () => {
+  const b = await boot();
+  try {
+    const noSecret = await b.call('POST', '/api/credentials', { key: 'only-a-key' });
+    assert.equal(noSecret.status, 400, 'a missing secret is a bad request');
+
+    const noSession = await b.call('POST', '/api/sessions/reconcile', { sessionId: 'nope' });
+    assert.equal(noSession.status, 404);
+
+    const noStreamSession = await b.call('POST', '/api/stream/start', { sessionId: 'nope' });
+    assert.equal(noStreamSession.status, 404);
+
+    const badEnv = await b.call('POST', '/api/sessions', { environment: 'paper', symbol: 'BTCUSDT' });
+    assert.equal(badEnv.status, 400);
+  } finally {
+    await b.stop();
+  }
+});
+
 test('CORS blocks non-loopback origins even with a valid token', async () => {
   const b = await boot();
   try {

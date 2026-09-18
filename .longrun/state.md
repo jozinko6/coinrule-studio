@@ -451,7 +451,7 @@ on live_orders.client_order_id.
    feePct, slippagePct, executionModel, participationRate, timeframeMs and candle count.
 
 ## Verification
-Full gate: lint 85 files 0 warnings, 356/356 tests, smoke 35 assets — PASS (3/3).
+Full gate: lint 85 files 0 warnings, 353/353 tests, smoke 35 assets — PASS (3/3).
 
 ## Remaining (honest scope)
 Phases pending/partial: 2 (kline WS reconnect/stale), 4 (History UI), 13 (user data stream),

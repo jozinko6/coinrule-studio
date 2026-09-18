@@ -89,7 +89,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 14 ExecutionBroker interface | **DONE (core)** | server/services/execution-broker.mjs: mode -> reconciliation -> risk -> filters -> idempotency, cancels allowed under kill switch, tests 8/8 |
 | 15 Action handler completeness | pending | — |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
-| 23 Tests (full list) | in progress | 356 tests; +4 hardening (withdrawal encoding/prefixes, mode ctor, assumptions) |
+| 23 Tests (full list) | in progress | 353 tests; +1 hardening (withdrawal encoding/prefixes, mode ctor, assumptions) |
 | 17 Multi-strategy accounting | pending | — |
 | 18 Append-only DB write model | pending | — |
 | 19 Settings UI (Binance) | pending | — |

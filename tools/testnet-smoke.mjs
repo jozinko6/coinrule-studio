@@ -54,7 +54,8 @@ export function makeCaller({ baseUrl, token, fetchImpl = globalThis.fetch }) {
     let payload = null;
     try { payload = await res.json(); } catch { payload = null; }
     if (!res.ok) {
-      const err = new Error(`${method} ${path} -> ${res.status} ${payload?.error ?? ''} ${payload?.message ?? ''}`.trim());
+      const detail = payload?.report?.errors?.length ? ` | ${payload.report.errors.join('; ')}` : '';
+      const err = new Error(`${method} ${path} -> ${res.status} ${payload?.error ?? ''} ${payload?.message ?? ''}${detail}`.trim());
       err.status = res.status;
       err.payload = payload;
       throw err;

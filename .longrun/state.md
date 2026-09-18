@@ -163,3 +163,10 @@ Verdict: PASS (3/3)
 - Dôkaz: gate PASS 3/3 (57 súborov, 255 testov, 35 assetov); reálny Chrome:
   optgroups 28+37, klik „Volatilné (37)“ → 37 párov, sken 37/37, 15 so signálom,
   0 výnimiek.
+
+### Oprava reálnej validity párov (verifier round)
+- Verifikátor porovnal množinu so živým Binance `exchangeInfo`: 63/65 TRADING.
+- `RATSUSDT` na Binance spot neexistuje → nahradený `TRUMPUSDT` (TRADING, vysoká volatilita).
+- `TONUSDT` mal status `BREAK` (pozastavené) → nahradený `UNIUSDT` (TRADING, likvidný major).
+- Nový nástroj `tools/symbol-audit.mjs` (verejné endpointy, bez kľúčov) overí celú
+  množinu; exit 0 = všetko TRADING. Spustené: „Všetkých 65 párov je TRADING.“

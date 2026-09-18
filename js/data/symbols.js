@@ -8,19 +8,21 @@
  *
  * Everything is USDT-quoted spot. Binance occasionally delists or renames a
  * pair; an unknown symbol simply fails to load and the UI falls back to the
+ * deterministic simulator, so the app keeps working. Run `node tools/symbol-audit.mjs`
+ * to re-check the whole universe against Binance exchangeInfo (network tool).
  * deterministic simulator, so the app keeps working.
  */
 
 export const MAJOR_SYMBOLS = [
   'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT',
   'AVAXUSDT', 'DOTUSDT', 'LINKUSDT', 'LTCUSDT', 'TRXUSDT', 'ATOMUSDT', 'NEARUSDT',
-  'APTUSDT', 'ARBUSDT', 'OPUSDT', 'SUIUSDT', 'TONUSDT', 'HBARUSDT', 'BCHUSDT',
+  'APTUSDT', 'ARBUSDT', 'OPUSDT', 'SUIUSDT', 'UNIUSDT', 'HBARUSDT', 'BCHUSDT',
   'ETCUSDT', 'FILUSDT', 'ICPUSDT', 'ALGOUSDT', 'VETUSDT', 'STXUSDT', 'IMXUSDT',
 ];
 
 export const VOLATILE_SYMBOLS = [
   'PEPEUSDT', 'SHIBUSDT', 'WIFUSDT', 'BONKUSDT', 'FLOKIUSDT', 'DOGSUSDT',
-  'PNUTUSDT', 'BOMEUSDT', 'ORDIUSDT', '1000SATSUSDT', 'RATSUSDT', 'MEMEUSDT',
+  'PNUTUSDT', 'BOMEUSDT', 'ORDIUSDT', '1000SATSUSDT', 'TRUMPUSDT', 'MEMEUSDT',
   'NEIROUSDT', 'INJUSDT', 'SEIUSDT', 'TIAUSDT', 'JUPUSDT', 'PYTHUSDT', 'WLDUSDT',
   'CRVUSDT', 'LDOUSDT', 'ENSUSDT', 'FETUSDT', 'RENDERUSDT', 'PENDLEUSDT',
   'ENAUSDT', 'ETHFIUSDT', 'WUSDT', 'ZKUSDT', 'STRKUSDT', 'BLURUSDT', 'GMXUSDT',

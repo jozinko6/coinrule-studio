@@ -41,6 +41,7 @@ spustí server a po ~2 sekundách otvorí aplikáciu v predvolenom prehliadači.
 | `node --test` | celá testovacia sada |
 | `node tools/verify.mjs` | lint + testy + runtime smoke, zapíše `.longrun/verification_report.json` |
 | `node tools/lint.mjs` | iba statické kontroly |
+| `node tools/symbol-audit.mjs` | overí kurátorovanú množinu párov proti Binance exchangeInfo (vyžaduje sieť) |
 
 Vyžaduje sa iba Node ≥ 18. Žiadne `npm install` — `dependencies` aj `devDependencies` sú prázdne.
 
@@ -177,15 +178,16 @@ V UI je vždy jasne označené, ktorý zdroj je aktívny.
 ### Obchodované páry
 
 * **Hlavné páry (28):** BTC, ETH, BNB, SOL, XRP, ADA, DOGE, AVAX, DOT, LINK, LTC, TRX,
-  ATOM, NEAR, APT, ARB, OP, SUI, TON, HBAR, BCH, ETC, FIL, ICP, ALGO, VET, STX, IMX.
+  ATOM, NEAR, APT, ARB, OP, SUI, UNI, HBAR, BCH, ETC, FIL, ICP, ALGO, VET, STX, IMX.
 * **Volatilné páry (37):** PEPE, SHIB, WIF, BONK, FLOKI, DOGS, PNUT, BOME, ORDI, 1000SATS,
-  RATS, MEME, NEIRO a high-beta alty (INJ, SEI, TIA, JUP, PYTH, WLD, CRV, LDO, ENS, FET,
+  TRUMP, MEME, NEIRO a high-beta alty (INJ, SEI, TIA, JUP, PYTH, WLD, CRV, LDO, ENS, FET,
   RENDER, PENDLE, ENA, ETHFI, W, ZK, STRK, BLUR, GMX, DYDX, ARKM, MANTA, ALT, AEVO).
 * Ponuka páru v hornej lište je rozdelená na kategórie; skener má tlačidlá
   „Hlavné (28)“ a „Volatilné (37)“.
 * Volatilné páry majú výrazne širšie sviečky — menšia veľkosť pozície a stop-loss podľa
-  ATR sú rozumný základ. Binance občas pár delistuje; neznámy pár sa vtedy ticho prepne
-  na determinovanú simuláciu, takže aplikácia funguje ďalej.
+  ATR sú rozumný základ. Binance občas pár delistuje alebo pozastaví; neznámy pár sa vtedy
+  ticho prepne na determinovanú simuláciu, takže aplikácia funguje ďalej. Aktuálny stav
+  overíš cez `node tools/symbol-audit.mjs` (naposledy 65/65 TRADING).
 
 ## 9. Testy a verifikácia
 

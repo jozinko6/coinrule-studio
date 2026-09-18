@@ -18,6 +18,7 @@ function fakeBackend(overrides = {}) {
     'POST /api/sessions': () => ({ ok: true, session: { id: 'ls_smoke' } }),
     'POST /api/sessions/reconcile': () => ({ ok: true, report: { state: 'ok', errors: [] } }),
     'POST /api/risk/killswitch': (body) => ({ ok: true, killSwitchEngaged: body.engaged }),
+    'GET /api/price?symbol=BTCUSDT': () => ({ ok: true, symbol: 'BTCUSDT', price: 60_000 }),
     'POST /api/orders': () => ({ ok: true, skipped: false, clientOrderId: 'cr-smoke-1', order: { status: 'NEW' } }),
     'GET /api/orders?sessionId=ls_smoke': () => ({ ok: true, orders: [{ client_order_id: 'cr-smoke-1', status: 'NEW' }] }),
     'POST /api/orders/cancel': () => ({ ok: true, order: { status: 'CANCELED' } }),
@@ -71,7 +72,7 @@ test('mask never reveals the middle of a secret', () => {
 
 test('a full testnet round trip runs in the safe order and re-arms the kill switch', async () => {
   const fake = fakeBackend();
-  const report = await run(fake, { price: 1000 });
+  const report = await run(fake, {}); // no explicit price: the harness derives one
   assert.equal(report.ok, true);
 
   const sequence = fake.calls.map((c) => c.key);
@@ -80,6 +81,11 @@ test('a full testnet round trip runs in the safe order and re-arms the kill swit
   assert.ok(idx('POST /api/risk/killswitch') < idx('POST /api/orders'), 'kill switch must be released explicitly before the test order');
   assert.equal(sequence.filter((k) => k === 'POST /api/orders').length, 1, 'exactly one order');
   assert.ok(sequence.includes('POST /api/orders/cancel'), 'the resting limit order is cancelled');
+  const priceCall = fake.calls.find((c) => c.key.startsWith('GET /api/price'));
+  assert.ok(priceCall, 'the market price is fetched before a limit order');
+  const orderCall = fake.calls.find((c) => c.key === 'POST /api/orders');
+  assert.ok(orderCall.body.price < 60_000, 'the limit sits below market (band-safe)');
+  assert.ok(orderCall.body.price > 59_000, 'the limit is not absurdly far from market');
 
   // the LAST kill switch call must be the safety re-arm
   const killCalls = fake.calls.filter((c) => c.key === 'POST /api/risk/killswitch');
@@ -121,6 +127,17 @@ test('missing credentials stop the run before touching the exchange', async () =
   assert.equal(fake.calls.at(-1).key, 'POST /api/risk/killswitch', 'the switch is re-armed even on config errors');
 });
 
+test('a market order carries the fetched reference price for the risk guard', async () => {
+  const fake = fakeBackend();
+  const report = await runSmoke({ baseUrl: 'http://x', token: 't', key: 'K', secret: 'S', fetchImpl: fake.impl, market: true, qty: 0.0002 });
+  assert.equal(report.ok, true);
+  const orderCall = fake.calls.find((c) => c.key === 'POST /api/orders');
+  assert.equal(orderCall.body.type, 'MARKET');
+  assert.equal(orderCall.body.referencePrice, 60_000, 'the public ticker price becomes the reference');
+  assert.equal(fake.calls.filter((c) => c.key.startsWith('GET /api/price')).length, 1);
+  assert.equal(fake.calls.filter((c) => c.key === 'POST /api/orders/cancel').length, 0, 'a market order is not cancelled');
+});
+
 test('--dry only inspects the backend', async () => {
   const fake = fakeBackend();
   const report = await run(fake, { dry: true, key: '', secret: '' });
@@ -138,4 +155,23 @@ test('credentials already configured on the backend are used without sending the
   assert.equal(fake.calls.filter((c) => c.key === 'POST /api/credentials').length, 0, 'no credential ever passes through the harness');
   assert.equal(fake.calls.filter((c) => c.key === 'POST /api/orders').length, 1);
   assert.equal(fake.calls.filter((c) => c.key === 'POST /api/risk/killswitch').at(-1).body.engaged, true);
+});
+test('external history triggers a second reconcile pass instead of aborting', async () => {
+  const fake = fakeBackend();
+  let reconcileCalls = 0;
+  const original = fake.impl;
+  fake.impl = async (url, init = {}) => {
+    if ((init.method ?? 'GET') === 'POST' && String(url).includes('/api/sessions/reconcile')) {
+      reconcileCalls += 1;
+      const body = reconcileCalls === 1
+        ? { ok: true, report: { state: 'mismatch', errors: [], imported: ['old-order'], mismatches: [{ kind: 'external_order' }] } }
+        : { ok: true, report: { state: 'ok', errors: [], imported: [], mismatches: [] } };
+      return { ok: true, status: 200, async json() { return body; } };
+    }
+    return original(url, init);
+  };
+  const report = await runSmoke({ baseUrl: 'http://x', token: 't', key: 'K', secret: 'S', fetchImpl: fake.impl });
+  assert.equal(report.ok, true);
+  assert.equal(reconcileCalls, 2, 'the harness re-runs reconciliation after importing history');
+  assert.equal(fake.calls.filter((c) => c.key === 'POST /api/orders').length, 1, 'the order still happens exactly once');
 });

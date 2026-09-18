@@ -168,6 +168,14 @@ export class BinancePrivate {
   async serverTime() { return this.request('GET', '/api/v3/time'); }
   async exchangeInfo() { return this.request('GET', '/api/v3/exchangeInfo'); }
 
+  /** Public last price (no signature) — used for price-band-safe limit orders. */
+  async tickerPrice(symbol) {
+    const body = await this.request('GET', '/api/v3/ticker/price', { params: symbol ? { symbol } : {} });
+    const price = Number(body?.price);
+    if (!Number.isFinite(price)) throw new BinanceApiError({ message: 'Neplatná odpoveď /api/v3/ticker/price' });
+    return price;
+  }
+
   /* ------------------------------------------------------------- private API */
 
   async accountInfo() {

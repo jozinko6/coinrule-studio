@@ -20,6 +20,9 @@ async function boot() {
   const mock = createMockExchange();
   const trading = (db) => createTradingContext({
     db,
+    // Same mock transport for the signed client AND the public ticker fallback,
+    // so no test ever depends on the real internet.
+    fetchImpl: mock.fetchImpl,
     clientFactory: () => new BinancePrivate({ apiKey: 'test-key', apiSecret: 'test-secret', baseUrl: 'https://mock.local', fetchImpl: mock.fetchImpl }),
   });
   const { app, url } = await startApp({ port: 0, quiet: true, dbPath: path.join(dir, 'test.db'), trading, adminToken: TOKEN });
@@ -144,13 +147,14 @@ test('the full order flow works through HTTP with every gate in place', async ()
     assert.equal(released.status, 200);
     assert.equal(released.body.killSwitchEngaged, false);
 
-    const placed = await b.call('POST', '/api/orders', { sessionId, symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET', quantity: 0.001, referencePrice: 60_000, intentId: 'api:1' });
+    // no referencePrice on purpose: the backend must source it from the public ticker
+    const placed = await b.call('POST', '/api/orders', { sessionId, symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET', quantity: 0.001, intentId: 'api:1' });
     assert.equal(placed.status, 200);
     assert.equal(placed.body.skipped, false);
     assert.equal(placed.body.order.status, 'FILLED');
     assert.equal(b.mock.state.counters.placed, 1);
 
-    const duplicate = await b.call('POST', '/api/orders', { sessionId, symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET', quantity: 0.001, referencePrice: 60_000, intentId: 'api:1' });
+    const duplicate = await b.call('POST', '/api/orders', { sessionId, symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET', quantity: 0.001, intentId: 'api:1' });
     assert.equal(duplicate.status, 200);
     assert.equal(duplicate.body.skipped, true);
     assert.equal(b.mock.state.counters.placed, 1, 'the same intent never reaches the exchange twice');
@@ -221,6 +225,24 @@ test('CORS blocks non-loopback origins even with a valid token', async () => {
     await b.stop();
   }
 });
+test('GET /api/price proxies the public ticker (token-protected)', async () => {
+  const b = await boot();
+  try {
+    const anonymous = await fetch(`${b.url}/api/price?symbol=BTCUSDT`);
+    assert.equal(anonymous.status, 401);
+
+    const noSymbol = await b.call('GET', '/api/price');
+    assert.equal(noSymbol.status, 400);
+
+    const priced = await b.call('GET', '/api/price?symbol=BTCUSDT');
+    assert.equal(priced.status, 200);
+    assert.equal(priced.body.symbol, 'BTCUSDT');
+    assert.equal(priced.body.price, 60_000, 'the mock exchange quotes 60000');
+  } finally {
+    await b.stop();
+  }
+});
+
 test('backtest history is stored, listed, fetched and deleted over the API', async () => {
   const b = await boot();
   try {

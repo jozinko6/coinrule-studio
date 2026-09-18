@@ -89,7 +89,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 14 ExecutionBroker interface | **DONE (core)** | server/services/execution-broker.mjs: mode -> reconciliation -> risk -> filters -> idempotency, cancels allowed under kill switch, tests 8/8 |
 | 15 Action handler completeness | **DONE (core)** | server/app.mjs API: token auth, /api/{status,mode,risk,credentials,sessions,orders,cancel,reconcile}; server/services/trading-context.mjs; tests/api.test.js 5/5 end-to-end |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
-| 23 Tests (full list) | in progress | 401 tests; +7 testnet smoke harness |
+| 23 Tests (full list) | in progress | 405 tests; +9 smoke harness, +2 price endpoint |
 | 17 Multi-strategy accounting | **DONE (core)** | js/core/attribution.js (per-strategy gross/net PnL, fees, win rate, deployed capital, return on capital) wired into metrics.perStrategy (persisted in metrics_json) + UI card; fixed a real attribution bug (Position was not carrying its opener, so forced exits were unassigned); tests/attribution.test.js 6/6 |
 | 18 Append-only DB write model | **DONE (core)** | migration 3 live_order_events + DB triggers aborting UPDATE/DELETE; every order write appends a redacted event; tests/live-events.test.js 4/4 (schema v3) |
 | 19 Settings UI (Binance) | **DONE (core)** | settings backend panel: connect (url+token in RAM), credentials write-only, mode buttons (typed confirm for LIVE), kill switch, sessions + reconciliation, stream; tests/backend-client.test.js 8/8 |
@@ -98,7 +98,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 22 Clean shutdown | **DONE** | SIGINT/SIGTERM handler, app.close({force}) closes server + DB, idempotent, tested |
 
 | 24 Binance mock server | **DONE** | server/exchange/mock.mjs (signature/recvWindow checks, 401/403/429/418/500, timeout-after-accept, partial fill, duplicate id) |
-| 25 Testnet opt-in integration | **DONE except the real round trip** | API + UI + README + tools/testnet-smoke.mjs (env-only secrets, never printed, always re-arms the kill switch, aborts before any order if reconciliation fails); awaiting testnet keys |
+| 25 Testnet opt-in integration | **DONE — real round trip PASSED** | Binance Demo host (demo-api.binance.com via COINRULE_BINANCE_BASE): signed account OK, reconciliation ok, market BUY filled (exchange id recorded), order listed from DB, myTrades fill imported, stream start/stop, kill switch re-armed, mode -> paper (exit 0) |
 | 26 CI | **DONE, intentionally inactive** | workflow exists and is correct; owner will not pay for GitHub Actions — the local gate (4/4) is the source of truth, verified from fresh clones |
 
 ## Non-negotiables carried forward

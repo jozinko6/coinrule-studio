@@ -767,3 +767,38 @@ now uses `process.exitCode` and lets the loop drain.
 
 ## Verification
 Full gate: lint 99 files 0 warnings, 401/401 tests, smoke 38 assets, repo-hygiene 96/0 — PASS (4/4).
+
+
+# Long-run upgrade — cycle 20 (2026-09-18): REAL exchange round trip (Binance Demo)
+
+## Result: PASS (not a mock)
+The owner supplied keys from the Binance Demo environment (demo.binance.com). The demo REST host is
+`https://demo-api.binance.com` (spot testnet keys do NOT work there: -2015; verified both ways).
+With `COINRULE_BINANCE_BASE=https://demo-api.binance.com`:
+- signed `GET /api/v3/account` -> OK, permissions ["SPOT"], canTrade=true, clock offset auto-synced;
+- `tools/testnet-smoke.mjs --confirm-testnet --market` -> **exit 0, PASS**:
+  health -> credentials from env -> mode TESTNET -> session -> reconcile (1st pass imported one
+  historical external order -> mismatch; 2nd pass ok) -> kill switch off -> ticker price fetched ->
+  MARKET BUY 0.0002 BTC -> **FILLED (exchange order id 65818857720)** -> listed from the DB ->
+  stream start/stop -> **kill switch ON, mode -> paper**;
+- post-trade reconciliation against the exchange imported the fill (fillsImported=1), and the DB holds
+  both orders (the new FILLED one and the older CANCELED one) with their exchange ids.
+
+## Real-exchange lessons (now covered by code/tests)
+1. PERCENT_PRICE_BY_SIDE: an absurdly low limit price is rejected (-1013) on the real venue. The
+   harness now derives a band-safe limit (0.5% below the public ticker); the mock never enforced this.
+2. Market orders carry no price, but the risk guard and filters need one: the backend now fetches the
+   public ticker itself for market orders, and the harness passes it as referencePrice.
+3. A fresh DB meeting an account with history imports those orders as external (by design) and the
+   session is a mismatch until the next pass: the harness reconciles twice before trading.
+4. New `GET /api/price?symbol=` (token-protected) uses the signed client when configured, otherwise a
+   plain public fetch; the mock exchange now answers /api/v3/ticker/price for hermetic tests.
+
+## Security hygiene
+- The key file lived INSIDE the repo (`binance.pass`); `*.pass` was added to .gitignore and the file
+  was never committed (verified with check-ignore + ls-files). Owner should still move/delete it.
+- Secrets were never printed or persisted anywhere: env-only, masked output, RAM-only backend.
+
+## Verification
+Full gate: lint 99 files 0 warnings, 405/405 tests, smoke 38 assets, repo-hygiene 96/0 — PASS (4/4),
+plus the real PASS above.

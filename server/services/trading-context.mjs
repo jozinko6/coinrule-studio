@@ -112,6 +112,19 @@ export function createTradingContext({
       if (!reconciler) throw Object.assign(new Error('Reconciliation vyžaduje API kľúče.'), { statusCode: 409 });
       return reconciler.reconcileSession(session);
     },
+    /** Public ticker. Uses the signed client when available, plain fetch otherwise. */
+    async publicPrice(symbol) {
+      const client = clientFor(mode.mode);
+      if (client) return { symbol, price: await client.tickerPrice(symbol) };
+      const host = baseOverride ?? HOSTS[mode.mode] ?? HOSTS.testnet;
+      const res = await fetchImpl(host + '/api/v3/ticker/price?symbol=' + encodeURIComponent(symbol));
+      if (!res.ok) throw Object.assign(new Error('Ticker HTTP ' + res.status), { statusCode: 502 });
+      const body = await res.json();
+      const price = Number(body?.price);
+      if (!Number.isFinite(price)) throw Object.assign(new Error('Neplatná odpoveď tickeru.'), { statusCode: 502 });
+      return { symbol, price };
+    },
+
     listOrders(sessionId) { return listLiveOrders(db, sessionId); },
     listSessions(limit = 10) { return listLiveSessions(db, { limit }); },
 

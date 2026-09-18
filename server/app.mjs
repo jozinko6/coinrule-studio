@@ -241,6 +241,12 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
       return respond(report.state === 'failed' ? 502 : 200, { ok: report.state !== 'failed', report });
     }
 
+    if (urlPath === '/api/price' && req.method === 'GET') {
+      const symbol = url.searchParams.get('symbol');
+      if (!symbol) throw Object.assign(new Error('Chýba symbol.'), { statusCode: 400 });
+      const quote = await context.publicPrice(symbol);
+      return respond(200, { ok: true, symbol: quote.symbol, price: quote.price });
+    }
     if (urlPath === '/api/backtests' && req.method === 'GET') {
       const rawLimit = Number(url.searchParams.get('limit') ?? 50);
       const limit = Math.min(500, Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 50));
@@ -294,10 +300,17 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
     if (urlPath === '/api/orders' && req.method === 'POST') {
       const body = await readJson(req);
       const session = context.getSession(String(body.sessionId ?? ''));
+      // A market order carries no price; the risk guard and the filters still
+      // need one, so the backend supplies the public ticker itself.
+      let referencePrice = body.referencePrice ?? null;
+      if (!referencePrice && !body.price && body.symbol) {
+        try { referencePrice = (await context.publicPrice(body.symbol)).price; }
+        catch { throw Object.assign(new Error('Cenu pre trhový príkaz sa nepodarilo zistiť.'), { statusCode: 502 }); }
+      }
       const result = await context.broker.placeOrder({
         session,
         symbol: body.symbol, side: body.side, type: body.type,
-        quantity: body.quantity, price: body.price ?? null, referencePrice: body.referencePrice ?? null,
+        quantity: body.quantity, price: body.price ?? null, referencePrice,
         intentId: body.intentId, reduceOnly: Boolean(body.reduceOnly),
       });
       return respond(200, { ok: true, ...result });

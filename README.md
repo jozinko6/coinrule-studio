@@ -325,4 +325,4 @@ a stale watchdogom (90 s); UI ho zapojí v ďalšej fáze (19/20).
   Ide o externý problém účtu, nie o chybu repozitára.
 * Reálne TESTNET/LIVE kolo nebolo možné overiť (chýbajú kľúče); všetky burzové cesty sú
   overené proti deterministickej mock burze (`server/exchange/mock.mjs`) a vlastným
-  harnessom nezávislého verifikátora.
+  harnessom nezávislého verifikátora.\n**Binance Demo / Testnet prostredie.** Spot Testnet je `https://testnet.binance.vision`,\nDemo je `https://demo-api.binance.com` — kľúče z jedného prostredia nefungujú v druhom (chyba -2015).\nPre Demo nastav `COINRULE_BINANCE_BASE=https://demo-api.binance.com`. Jednokrokový overovací round trip:\n`node tools/testnet-smoke.mjs --confirm-testnet [--market]` (kľúče a admin token výhradne z prostredia;\nharness vždy na konci zapne kill switch a vráti mód do PAPER).\n

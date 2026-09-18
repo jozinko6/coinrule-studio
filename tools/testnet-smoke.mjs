@@ -116,18 +116,42 @@ export async function runSmoke({ baseUrl, token, key = '', secret = '', symbol =
     sessionId = created.session.id;
     step('session created', { sessionId });
 
-    const reconciled = await call('POST', '/api/sessions/reconcile', { sessionId });
-    step('reconciliation', { state: reconciled.report.state });
-    if (reconciled.report.state !== 'ok') throw new Error(`Reconciliation nie je ok: ${reconciled.report.state} — ${JSON.stringify(reconciled.report.errors ?? [])}`);
+    let reconciled = await call('POST', '/api/sessions/reconcile', { sessionId });
+    step('reconciliation', { state: reconciled.report.state, imported: reconciled.report.imported?.length ?? 0 });
+
+    // A fresh DB meeting an account with history imports those orders as
+    // external (correctly flagged). The second pass runs against the now-known
+    // state; anything still unresolved aborts the run.
+    const report = reconciled.report;
+    const onlyExternal = (report.mismatches?.length ?? 0) > 0
+      && report.mismatches.every((m) => m.kind === 'external_order')
+      && !(report.errors?.length);
+    if (report.state !== 'ok' && onlyExternal) {
+      reconciled = await call('POST', '/api/sessions/reconcile', { sessionId });
+      step('reconciliation (2nd pass after importing external orders)', { state: reconciled.report.state });
+    }
     if (reconciled.report.errors?.length) throw new Error(`Chyby reconciliation: ${reconciled.report.errors.join('; ')}`);
+    if (reconciled.report.state !== 'ok') {
+      throw new Error(`Reconciliation nie je ok: ${reconciled.report.state} — ${JSON.stringify(reconciled.report.mismatches ?? [])}`);
+    }
 
     await call('POST', '/api/risk/killswitch', { engaged: false });
     step('kill switch off (test only)');
 
+    let referencePrice = price;
+    let limitPrice = price;
+    if (!referencePrice) {
+      const ticker = await call('GET', `/api/price?symbol=${encodeURIComponent(symbol)}`);
+      referencePrice = ticker.price;
+      // 0.5% below market: inside every exchange price band, so it rests open.
+      limitPrice = Math.floor(ticker.price * 0.995 * 100) / 100;
+      step('market price fetched', { price: ticker.price, limitPrice: market ? null : limitPrice });
+    }
+
     const intent = `smoke:${Date.now().toString(36)}`;
     const order = await call('POST', '/api/orders', market
-      ? { sessionId, symbol, side: 'BUY', type: 'MARKET', quantity: qty, intentId: intent }
-      : { sessionId, symbol, side: 'BUY', type: 'LIMIT', quantity: qty, price: price ?? 1000, intentId: intent });
+      ? { sessionId, symbol, side: 'BUY', type: 'MARKET', quantity: qty, referencePrice, intentId: intent }
+      : { sessionId, symbol, side: 'BUY', type: 'LIMIT', quantity: qty, price: limitPrice, intentId: intent });
     report.order = order;
     step(market ? 'market order placed' : 'limit order placed (far below market)', {
       clientOrderId: order.clientOrderId, status: order.order?.status, skipped: order.skipped,

@@ -147,6 +147,11 @@ export function createMockExchange({ apiKey = 'test-key', apiSecret = 'test-secr
     if (path === '/api/v3/ping' && method === 'GET') return respond(200, {});
     if (path === '/api/v3/time' && method === 'GET') return respond(200, { serverTime: serverTime() });
     if (path === '/api/v3/exchangeInfo' && method === 'GET') return respond(200, MOCK_EXCHANGE_INFO);
+    if (path === '/api/v3/ticker/price' && method === 'GET') {
+      const symbol = new URL(fullUrl).searchParams.get('symbol');
+      if (symbol && symbol !== 'BTCUSDT' && symbol !== 'PEPEUSDT') return apiError(400, -1121, 'Invalid symbol.');
+      return respond(200, { symbol: symbol ?? 'BTCUSDT', price: '60000.00000000' });
+    }
 
     const authError = checkAuth(fullUrl, init);
     if (authError) return authError;

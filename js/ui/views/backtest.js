@@ -33,6 +33,8 @@ export function render() {
   const res = state.backtest;
   if (res) {
     wrap.append(resultsCard(res));
+    const attribution = attributionCard(res);
+    if (attribution) wrap.append(attribution);
     wrap.append(chartsCard(res));
     wrap.append(tradesCard(res));
     wrap.append(activityCard(res));
@@ -41,6 +43,33 @@ export function render() {
   }
   wrap.append(historyCard());
   return wrap;
+}
+
+/** Per-strategy split of a shared-cash backtest (Phase 17). */
+function attributionCard(res) {
+  const rows = res.metrics?.perStrategy ?? [];
+  if (!rows.length) return null;
+  return h('div', { class: 'card' },
+    h('div', { class: 'card-head' },
+      h('h3', null, 'Rozdelenie podľa stratégií'),
+      pill(rows.length + (rows.length === 1 ? ' stratégia' : ' stratégie'), 'info')),
+    table([
+      { label: 'Stratégia' },
+      { label: 'Obchody', num: true },
+      { label: 'Win rate', num: true },
+      { label: 'Hrubé PnL', num: true },
+      { label: 'Poplatky', num: true },
+      { label: 'Čisté PnL', num: true },
+      { label: 'Výnos z kapitálu', num: true },
+    ], rows.map((row) => [
+      row.strategyName,
+      String(row.trades),
+      fmtPct(row.winRate),
+      fmtMoney(row.grossPnl, 2),
+      fmtMoney(row.fees, 2),
+      h('span', { class: signClass(row.netPnl) }, fmtMoney(row.netPnl, 2)),
+      fmtPct(row.returnOnDeployedPct),
+    ])));
 }
 
 /** Backtest history stored in the local SQLite database (Phase 4). */

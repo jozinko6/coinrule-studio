@@ -8,11 +8,15 @@
 import { roundCash, roundQty, roundPct, pctChange, clamp } from './money.js';
 
 export class Position {
-  constructor({ symbol, qty, entryPrice, time = 0 }) {
+  constructor({ symbol, qty, entryPrice, time = 0, strategyId = null, ruleId = null }) {
     this.symbol = symbol;
     this.qty = qty;
     this.entryPrice = entryPrice;
     this.openedAt = time;
+    // Who opened this position: kept so every closed trade stays attributable
+    // even when the exit order is created internally (stop, end of backtest).
+    this.strategyId = strategyId;
+    this.ruleId = ruleId;
     this.realizedPnl = 0;
     this.feesPaid = 0;
     // Entry fees attributable to the currently OPEN quantity. Every sell
@@ -138,7 +142,7 @@ export class Portfolio {
   }
 
   /** Buy `qty` at `price`; charges `fee`. Returns the created/updated position. */
-  applyBuy({ symbol, qty, price, fee, time = 0 }) {
+  applyBuy({ symbol, qty, price, fee, time = 0, strategyId = null, ruleId = null }) {
     const q = roundQty(qty);
     const cost = roundCash(q * price);
     this.cash = roundCash(this.cash - cost - fee);
@@ -151,8 +155,10 @@ export class Portfolio {
       pos.feesPaid = roundCash(pos.feesPaid + fee);
       pos.entryFeeOpen = roundCash((pos.entryFeeOpen ?? 0) + fee);
       pos.updateWatermarks(price);
+      if (!pos.strategyId && strategyId) pos.strategyId = strategyId;
+      if (!pos.ruleId && ruleId) pos.ruleId = ruleId;
     } else {
-      pos = new Position({ symbol, qty: q, entryPrice: price, time });
+      pos = new Position({ symbol, qty: q, entryPrice: price, time, strategyId, ruleId });
       pos.feesPaid = roundCash(fee);
       pos.entryFeeOpen = roundCash(fee);
       this.positions.set(symbol, pos);

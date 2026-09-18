@@ -29,8 +29,11 @@ test('the backtester produces a well-formed result', () => {
 });
 
 test('results are deterministic across runs', () => {
-  const a = backtest({ strategy: alwaysBuy(), candles, startingCash: 10_000 });
-  const b = backtest({ strategy: alwaysBuy(), candles, startingCash: 10_000 });
+  // One strategy instance for both runs: freshly created strategies get random
+  // ids, and ids are part of the (correct) per-strategy attribution output.
+  const strategy = alwaysBuy();
+  const a = backtest({ strategy, candles, startingCash: 10_000 });
+  const b = backtest({ strategy, candles, startingCash: 10_000 });
   assert.deepEqual(a.metrics, b.metrics);
   assert.deepEqual(a.equityCurve.slice(0, 20), b.equityCurve.slice(0, 20));
   assert.equal(a.trades.length, b.trades.length);

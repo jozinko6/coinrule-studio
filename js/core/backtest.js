@@ -14,6 +14,7 @@ import { PaperBroker } from './paper.js';
 import { Portfolio } from './portfolio.js';
 import { StrategyRuntime } from './engine.js';
 import { computeMetrics } from './metrics.js';
+import { perStrategyBreakdown } from './attribution.js';
 import { collectIndicatorRefs, TIMEFRAME_MS } from './rules.js';
 import { roundCash } from './money.js';
 
@@ -116,7 +117,12 @@ export function backtest(args) {
   if (openPos) {
     broker.mode = 'live';
     broker.setPrice(lastBar.close, lastBar.time);
-    broker.submit({ symbol, side: 'sell', type: 'market', qty: openPos.qty, reduceOnly: true, reason: 'end_of_backtest' });
+    broker.submit({
+      symbol, side: 'sell', type: 'market', qty: openPos.qty, reduceOnly: true,
+      reason: 'end_of_backtest',
+      strategyId: openPos.strategyId ?? null,
+      ruleId: openPos.ruleId ?? null,
+    });
   }
 
   const finalEquity = broker.portfolio.equity(lastBar.close);
@@ -135,6 +141,11 @@ export function backtest(args) {
     feesPaid: broker.portfolio.feesPaid,
     exposureSamples,
   });
+
+  // Phase 17: shared-cash portfolios get per-strategy attribution. It lives in
+  // metrics_json so every persisted run round-trips it.
+  const strategyNames = Object.fromEntries(strategies.map((s) => [s.id, s.name]));
+  metrics.perStrategy = perStrategyBreakdown(broker.trades, { strategyNames, startingCash });
 
   const warnings = [];
   const dataLabel = timeframeMs % 60_000 === 0 ? `${Math.round(timeframeMs / 60_000)} minútové sviečky` : `sviečky po ${Math.round(timeframeMs / 1000)} s`;

@@ -234,7 +234,10 @@ export class PaperBroker {
     let sellResult = null;
 
     if (order.side === 'buy') {
-      this.portfolio.applyBuy({ symbol: order.symbol, qty, price: execPrice, fee, time });
+      this.portfolio.applyBuy({
+        symbol: order.symbol, qty, price: execPrice, fee, time,
+        strategyId: order.strategyId ?? null, ruleId: order.ruleId ?? null,
+      });
     } else {
       sellResult = this.portfolio.applySell({ symbol: order.symbol, qty, price: execPrice, fee, time, reason: reason ?? order.reason });
       if (!sellResult.qty) {
@@ -274,8 +277,9 @@ export class PaperBroker {
   recordTrade(order, exitPrice, fill, time, reason, prePos = null) {
     // The position may already be gone (fully closed) — use the snapshot taken
     // before the sell so the entry price is always correct.
-    const entryPrice = prePos?.entryPrice ?? this.portfolio.position(order.symbol)?.entryPrice ?? exitPrice;
-    const openedAt = prePos?.openedAt ?? this.portfolio.position(order.symbol)?.openedAt ?? order.createdAt ?? time;
+    const identity = prePos ?? this.portfolio.position(order.symbol);
+    const entryPrice = identity?.entryPrice ?? exitPrice;
+    const openedAt = identity?.openedAt ?? order.createdAt ?? time;
     const qty = roundQty(fill.qty);
     const grossPnl = roundCash((exitPrice - entryPrice) * qty);
     const entryFee = roundCash(fill.entryFeeAlloc ?? 0);
@@ -306,8 +310,8 @@ export class PaperBroker {
       closedAt: time,
       durationMs: time - openedAt,
       reason,
-      ruleId: order.ruleId,
-      strategyId: order.strategyId,
+      ruleId: identity?.ruleId ?? order.ruleId ?? null,
+      strategyId: identity?.strategyId ?? order.strategyId ?? null,
       orderId: order.id,
     });
   }

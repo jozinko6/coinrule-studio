@@ -675,3 +675,39 @@ covered by the API/client tests rather than by the browser check.
 ## Remaining
 Phase 17 (multi-strategy accounting) and UI polish; real TESTNET round trip needs credentials; CI
 blocked by the GitHub billing lock.
+
+
+# Long-run upgrade — cycle 17 (2026-09-18): multi-strategy accounting (Phase 17)
+
+## Real bug found and fixed while implementing
+Trades reported `strategyId: null` even though signals carried it. Root cause:
+`Position` did not remember who opened it, and internally created exits (protective stops, the
+forced end-of-backtest close) did not forward the identity; the trade inherited whatever the EXIT
+order had. Fix: Position carries `strategyId`/`ruleId`, applyBuy fills/backfills them, entry fills
+forward the order identity, the closed trade prefers the POSITION identity, and backtest's forced
+close passes the open position's identity. Before: every trade bucketed as "unassigned"; after:
+attributed, with a regression test.
+
+## Delivered
+- `js/core/attribution.js` — pure `perStrategyBreakdown(trades, { strategyNames, startingCash })`:
+  trades, wins/losses, winRate, grossPnl, fees, netPnl, capitalDeployed, returnOnDeployedPct,
+  portfolioPnlPct, avgDurationMs, first/last trade; unattributed trades get an explicit bucket;
+  rows sorted by net PnL; null-safe (no NaN/Infinity).
+- Backtest: `metrics.perStrategy` (persisted through metrics_json, so History runs round-trip it).
+- UI: "Rozdelenie podľa stratégií" card in the Backtest results.
+- Tests: 6/6 incl. the lost-attribution regression and a two-strategy same-symbol run.
+
+## Semantics documented
+One position per symbol + allowPyramiding:false means same-symbol strategies trade SERIALLY (the
+second cannot open while the first holds), but each closed trade is attributed to its opener, so the
+breakdown stays exact. Different-symbol multi-strategy portfolios are not possible in one backtest
+(backtest requires one symbol).
+
+## Verification
+Full gate: lint 97 files 0 warnings, 393/393 tests, smoke 38 assets, repo-hygiene 94/0 — PASS (4/4).
+Also fixed the determinism test that compared two freshly created strategies (random ids are now part
+of the correct attribution output) — the test reuses one strategy instance instead.
+
+## Remaining
+Phase 25 real TESTNET round trip (needs credentials), CI (GitHub billing lock, external). All other
+phases are DONE or DONE(core).

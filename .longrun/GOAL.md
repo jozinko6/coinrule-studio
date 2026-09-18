@@ -85,11 +85,11 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 10 Live risk engine + kill switch | **DONE (core)** | server/services/live-risk.mjs, tests/live-risk.test.js 9/9 (kill switch default ON) |
 | 11 Idempotency | **DONE (core)** | server/services/idempotency.mjs + live-repository; deterministic intent hash ids, never resend after timeout (-2010/timeout -> UNKNOWN), tests/idempotency.test.js 8/8 |
 | 12 Reconciliation | **DONE (core)** | server/services/reconciliation.mjs (UNKNOWN/PENDING resolution, external-order import + mismatch, idempotent fills, never-accepted -> REJECTED), tests/reconciliation.test.js 7/7 |
-| 13 User data stream | pending | — |
+| 13 User data stream | **DONE (core)** | server/services/user-stream.mjs polling fallback (backoff, cancellable timer), stale -> kill switch ONCE, recovery never disarms; /api/stream{,/start,/stop}; tests/user-stream.test.js 7/7 |
 | 14 ExecutionBroker interface | **DONE (core)** | server/services/execution-broker.mjs: mode -> reconciliation -> risk -> filters -> idempotency, cancels allowed under kill switch, tests 8/8 |
 | 15 Action handler completeness | **DONE (core)** | server/app.mjs API: token auth, /api/{status,mode,risk,credentials,sessions,orders,cancel,reconcile}; server/services/trading-context.mjs; tests/api.test.js 5/5 end-to-end |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
-| 23 Tests (full list) | in progress | 353 tests; +1 hardening (withdrawal encoding/prefixes, mode ctor, assumptions) |
+| 23 Tests (full list) | in progress | 365 tests; +7 user stream, +5 HTTP API end-to-end |
 | 17 Multi-strategy accounting | pending | — |
 | 18 Append-only DB write model | pending | — |
 | 19 Settings UI (Binance) | pending | — |
@@ -99,7 +99,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 
 | 24 Binance mock server | **DONE** | server/exchange/mock.mjs (signature/recvWindow checks, 401/403/429/418/500, timeout-after-accept, partial fill, duplicate id) |
 | 25 Testnet opt-in integration | pending | — |
-| 26 CI | **DONE** | .github/workflows/verify.yml runs node tools/verify.mjs on push/PR (Node 24) + uploads the report |
+| 26 CI | **DONE but BLOCKED** | .github/workflows/verify.yml active; GitHub refuses to start the job: "account is locked due to a billing issue" (external, not code) |
 
 ## Non-negotiables carried forward
 - No API keys/secrets in localStorage, frontend state, logs, URLs, exports or git.

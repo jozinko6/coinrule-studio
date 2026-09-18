@@ -491,3 +491,31 @@ Phase 19/20 UI: Settings panel (backend URL, admin token, credentials form posti
 /api/credentials, mode buttons with typed confirm, kill switch, health/db status) and a Dashboard
 mode badge fed by /api/status; then Phase 4 History UI over the DB API (runs + trades + equity).
 Followed by Phase 13 user-data-stream polling fallback and Phases 2/17/18.
+
+
+# Long-run upgrade — cycle 10 (2026-09-18): user data stream (polling) + CI status
+
+## Delivered
+- `server/services/user-stream.mjs` — zero-dependency polling fallback for Binance user-data:
+  each tick runs the reconciler; success resets the interval, failures back off exponentially
+  (1s -> 60s cap); STALE (no success for staleAfterMs, default 45s) ENGAGES the kill switch exactly
+  once and recovery NEVER disarms it automatically. Found+fixed a lifecycle bug: stop() now cancels
+  the pending sleep and the default timer is unref()-ed, so a poller can never hold a process open;
+  app.close() stops any running stream too.
+- API: GET /api/stream, POST /api/stream/start, POST /api/stream/stop; one stream per session in
+  the trading context.
+- Tests: user-stream 7/7 + API end-to-end stream start/stop.
+
+## CI — blocked externally
+Both workflow runs conclude "failure" in ~6-8s WITHOUT executing any step:
+"The job was not started because your account is locked due to a billing issue."
+The workflow file is correct (verify steps + artifact upload); GitHub refuses to schedule runners for
+this account. This needs the account owner to resolve the billing lock; nothing in the repo can fix it.
+
+## Verification
+Full gate: lint 89 files 0 warnings, 365/365 tests, smoke 35 assets — PASS (3/3).
+
+## Next safe step
+Phase 2: js/core/stream.js (browser kline WebSocket, injectable socket factory, reconnect with
+backoff, stale watchdog) + tests; then Phase 19/20 UI wiring (Settings/API token, credentials, mode
+buttons, kill switch, stream status; Dashboard mode badge) and Phase 4 History UI.

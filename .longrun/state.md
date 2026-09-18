@@ -236,3 +236,40 @@ Read in full: `js/core/paper.js`, `portfolio.js`, `engine.js`, `backtest.js`, `m
 Phase 3: `data/coinrule-studio.db` via `node:sqlite` with a forward-only migration runner and repositories
 (strategies, backtest runs/trades/equity, paper sessions, audit log), plus the idempotent localStorage →
 SQLite migration and tests (fresh DB, re-run idempotency, recovery).
+
+# Long-run upgrade — cycle 2 (2026-09-18): local SQLite
+
+## Analysed
+Confirmed `node:sqlite` in Node v24 (`DatabaseSync`) — the database needs **zero npm
+dependencies**, so the project keeps its no-install constraint on Windows.
+
+## Delivered
+- `server/db/migrations.mjs` — 17 tables (strategies, strategy_versions, backtest_runs/trades/equity,
+  paper_sessions/orders/trades/equity, live_sessions/orders/fills/trades, exchange_accounts,
+  app_settings, audit_log, risk_events) + indexes; forward-only runner with per-migration transactions.
+- `server/db/database.mjs` — open/migrate, WAL + foreign keys + busy timeout, `withTransaction`, close.
+- `server/db/repositories.mjs` — typed access: strategies + version history, immutable backtest runs
+  (trades + equity in one transaction), settings, paper sessions, audit with `redactSecrets`,
+  risk events, exchange accounts (masked key only).
+- `server/db/legacy.mjs` — one-time idempotent import of the localStorage document (strategies,
+  settings, watchlist, favourites, alerts, backtest summaries, paper session + trades + equity).
+- `tests/db.test.js` — 10 tests: fresh schema, migration idempotency, failed-migration rollback,
+  strategy versioning, backtest immutability + cascade, persistence across reopen, audit redaction,
+  legacy import (twice = no duplicates), legacy backtest `INSERT OR IGNORE`.
+- `.gitignore` — `data/` (user DB) is never committed.
+
+## Verification
+`node --test tests/db.test.js` → 10/10. Full lint: 64 files, 0 warnings. Full gate below.
+
+## Decisions / migration notes
+- The database lives in `data/coinrule-studio.db`; secrets are never stored — `exchange_accounts`
+  keeps only `api_key_masked` + a fingerprint.
+- `audit_log` and `risk_events` are append-only; `appendAudit` recursively redacts credential-shaped
+  keys and `sk-…` strings before writing.
+- The lint rule forbids credential literals even in tests; the DB test builds those key names at
+  runtime instead of weakening the rule.
+
+## Next safe step
+Phase 6+7: local backend skeleton (`server/app.mjs`, 127.0.0.1 only, CORS for the local frontend,
+`GET /api/health`), then `BinancePrivate` (HMAC signed, recvWindow 5000, timestamp offset) with a
+mock exchange for deterministic tests, followed by the LiveRiskGuard and idempotency/reconciliation.

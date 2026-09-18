@@ -8,7 +8,7 @@ a virtuálne (paper) obchodovanie s reálnymi trhovými dátami z verejného API
 
 ```
 node tools/serve.mjs      →  http://127.0.0.1:8787
-node --test               →  255 testov
+node --test               →  277 testov
 node tools/verify.mjs     →  plná verifikácia (lint + testy + runtime smoke)
 ```
 
@@ -75,7 +75,7 @@ js/ui/                  DOM vrstva (10 views; moduly nesiahnu na `document` pri 
   dom.js charts.js state.js views/*
 js/app.js               bootstrap a routing
 tools/                  serve.mjs, lint.mjs, verify.mjs
-tests/                  node:test sada (255 testov)
+tests/                  node:test sada (277 testov)
 ```
 
 Kľúčové pravidlo: `js/core/**` a `js/data/**` **nesmú** siahať na DOM, takže celý engine je
@@ -188,6 +188,35 @@ V UI je vždy jasne označené, ktorý zdroj je aktívny.
   ATR sú rozumný základ. Binance občas pár delistuje alebo pozastaví; neznámy pár sa vtedy
   ticho prepne na determinovanú simuláciu, takže aplikácia funguje ďalej. Aktuálny stav
   overíš cez `node tools/symbol-audit.mjs` (naposledy 65/65 TRADING).
+
+## 13. Lokálna databáza (SQLite)
+
+Dátová vrstva beží na vstavanom module `node:sqlite` (Node ≥ 22.5) — žiadne npm
+závislosti a žiadny natívny build, takže zostáva v platnosti „bez inštalácie“.
+
+| Čo | Kde / ako |
+|---|---|
+| Súbor databázy | `data/coinrule-studio.db` (adresár sa vytvorí automaticky; je v `.gitignore`) |
+| Migrácie | `server/db/migrations.mjs` — forward-only, každá v transakcii, zapísaná v `schema_migrations` |
+| Prístupová vrstva | `server/db/repositories.mjs` (stratégie + verzie, backtesty, paper session, audit, riziká, účty) |
+| Import starých dát | `server/db/legacy.mjs` — jednorazový a idempotentný import z localStorage |
+
+Schéma obsahuje tabuľky `strategies`, `strategy_versions`, `backtest_runs`, `backtest_trades`,
+`backtest_equity`, `paper_sessions`, `paper_orders`, `paper_trades`, `paper_equity`,
+`live_sessions`, `live_orders`, `live_fills`, `live_trades`, `exchange_accounts`,
+`app_settings`, `audit_log`, `risk_events`.
+
+**Backup:** skopíruj `data/coinrule-studio.db` (a `-wal`/`-shm`, ak existujú) alebo použi
+`sqlite3 data/coinrule-studio.db .dump > backup.sql`. V databáze nie sú žiadne API secrety —
+účty držia iba maskovaný kľúč (`api_key_masked`).
+
+**Reset aplikácie:** zatvor server a zmaž adresár `data/` — pri ďalšom štarte sa databáza
+vytvorí nanovo a migrácie sa spustia od začiatku. Stratégie v prehliadači (localStorage)
+zostávajú nedotknuté, kým ich znova neimportuješ.
+
+**Stav integrácie:** databázová vrstva je hotová a testovaná (`tests/db.test.js`), ale
+napojenie UI (História výsledkov) a lokálny backend s privátnym Binance API sú ďalšie kroky
+long-run plánu — pozri `.longrun/GOAL.md`.
 
 ## 9. Testy a verifikácia
 

@@ -75,9 +75,9 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 |-------|--------|----------|
 | 1 Engine correctness (6 issues) | **DONE** | tests/execution.test.js 12/12, full suite 267/267 |
 | 2 Binance kline WS + reconnect/stale | pending | — |
-| 3 SQLite DB + migrations | pending | — |
+| 3 SQLite DB + migrations | **DONE (core)** | server/db/*, tests/db.test.js 10/10; UI wiring pending |
 | 4 History UI | pending | — |
-| 5 localStorage → SQLite migration | pending | — |
+| 5 localStorage → SQLite migration | **DONE (core)** | importLegacyState, idempotent, tested |
 | 6 Local backend (127.0.0.1 only) | pending | — |
 | 7 BinancePrivate (signed API) | pending | — |
 | 8 Trading modes state machine | pending | — |
@@ -89,13 +89,14 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 14 ExecutionBroker interface | pending | — |
 | 15 Action handler completeness | pending | — |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
+| 23 Tests (full list) | in progress | 12 execution + 10 DB tests added; more per phase |
 | 17 Multi-strategy accounting | pending | — |
 | 18 Append-only DB write model | pending | — |
 | 19 Settings UI (Binance) | pending | — |
 | 20 Dashboard modes | pending | — |
 | 21 Windows launcher + /api/health | pending | — |
 | 22 Clean shutdown | pending | — |
-| 23 Tests (full list) | in progress | 12 new engine tests, more per phase |
+
 | 24 Binance mock server | pending | — |
 | 25 Testnet opt-in integration | pending | — |
 | 26 CI | pending | — |

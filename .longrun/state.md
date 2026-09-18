@@ -607,3 +607,38 @@ Full gate: lint 94 files 0 warnings, 386/386 tests, smoke 36 assets — PASS (3/
 ## Remaining (honest scope)
 Phase 4 (History UI over the DB), Phase 17 (multi-strategy accounting); a real TESTNET round trip
 still needs credentials; CI stays blocked by the GitHub billing lock.
+
+
+# Long-run upgrade — cycle 15 (2026-09-18): delivery incident + remediation (VERIFIED)
+
+## The incident (found by the third independent audit, verdict NOT VERIFIED)
+The new `js/data/backend.js` was **silently git-ignored**: `.gitignore` had the unanchored rule
+`data/` (added for the local SQLite DB), which matches ANY directory named data, including `js/data/`.
+Result: the worktree looked clean, but a fresh clone from GitHub had no backend client — clone gate
+FAIL 0/3 (unknown imports, 5 test failures, /js/data/backend.js 404) and am empty <main id="view">.
+This is exactly the class of defect that only a clone-based check can catch.
+
+## Remediation (commit 1964275)
+1. `.gitignore`: `data/` -> `/data/` (repo root only).
+2. `js/data/backend.js` force-added and tracked (git ls-files confirms).
+3. NEW gate 4 `repo-hygiene` in tools/verify.mjs: walks js/server/tools/tests and fails if any source
+   file is git-ignored (the exact failure mode); the comment documents the incident.
+4. Settings shows a red warning when the backend URL is not loopback (credentials must not leave the
+   machine).
+
+## Remediation evidence (independent re-verification, VERIFIED)
+- fresh clone: contains js/data/backend.js; `node tools/verify.mjs` -> PASS 4/4, exit 0
+  (lint 94 / 386 tests / smoke 36 assets / hygiene 91 files 0 ignored) — numbers matched the claim;
+- in the clone: real backend + headless Chrome -> exact badge "backend: paper", settings panel
+  present, no view errors, /js/data/backend.js HTTP 200;
+- adversarial gate probe in an isolated repo: unanchored rule -> check-ignore hits; anchored -> silent;
+  real repo now ignores data/coinrule-studio.db but NOT js/data/*;
+- HEAD == origin/main == 1964275, tree clean, clone removed after the check.
+
+## Lesson recorded
+The gate now treats "source file ignored by git" as a hard failure, so a clean worktree can no longer
+hide a missing file.
+
+## Remaining (honest scope)
+Phase 4 (History UI over the DB), Phase 17 (multi-strategy accounting); real TESTNET round trip needs
+credentials; CI stays blocked by the GitHub billing lock.

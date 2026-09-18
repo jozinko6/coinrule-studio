@@ -89,7 +89,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 14 ExecutionBroker interface | **DONE (core)** | server/services/execution-broker.mjs: mode -> reconciliation -> risk -> filters -> idempotency, cancels allowed under kill switch, tests 8/8 |
 | 15 Action handler completeness | **DONE (core)** | server/app.mjs API: token auth, /api/{status,mode,risk,credentials,sessions,orders,cancel,reconcile}; server/services/trading-context.mjs; tests/api.test.js 5/5 end-to-end |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
-| 23 Tests (full list) | in progress | 386 tests; +8 backend client, browser-verified Settings panel + Dashboard badge |
+| 23 Tests (full list) | in progress | 386 tests; gate now 4/4 incl. repo-hygiene (clone-safe delivery) |
 | 17 Multi-strategy accounting | pending | — |
 | 18 Append-only DB write model | **DONE (core)** | migration 3 live_order_events + DB triggers aborting UPDATE/DELETE; every order write appends a redacted event; tests/live-events.test.js 4/4 (schema v3) |
 | 19 Settings UI (Binance) | **DONE (core)** | settings backend panel: connect (url+token in RAM), credentials write-only, mode buttons (typed confirm for LIVE), kill switch, sessions + reconciliation, stream; tests/backend-client.test.js 8/8 |

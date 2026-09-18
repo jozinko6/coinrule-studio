@@ -15,6 +15,7 @@ import { OrderIdempotency } from './idempotency.mjs';
 import { Reconciler } from './reconciliation.mjs';
 import { ExecutionBroker } from './execution-broker.mjs';
 import { createLiveSession, getLiveSession, listLiveOrders, listLiveSessions } from '../db/live-repository.mjs';
+import { UserStreamPoller } from './user-stream.mjs';
 
 export const CREDENTIAL_ENV = Object.freeze({
   key: 'COINRULE_BINANCE_KEY',
@@ -58,6 +59,7 @@ export function createTradingContext({
 
   let broker = null;
   let reconciler = null;
+  let stream = null;
 
   const mode = new TradingModeManager({
     clock,
@@ -112,6 +114,22 @@ export function createTradingContext({
     },
     listOrders(sessionId) { return listLiveOrders(db, sessionId); },
     listSessions(limit = 10) { return listLiveSessions(db, { limit }); },
+
+    /** Polling user-data stream for one session (stale -> kill switch). */
+    startStream(sessionId, options = {}) {
+      this.stopStream();
+      const session = getLiveSession(db, sessionId);
+      if (!session) throw new Error('Session neexistuje.');
+      if (!reconciler) throw new Error('User data stream vyžaduje API kľúče.');
+      stream = new UserStreamPoller({ session, reconciler, guard, clock, ...options });
+      stream.start();
+      return stream.status();
+    },
+    stopStream() {
+      if (stream) { stream.stop(); stream = null; }
+      return true;
+    },
+    streamStatus() { return stream ? stream.status() : { running: false, sessionId: null }; },
 
     snapshot() {
       return {

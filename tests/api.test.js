@@ -167,6 +167,17 @@ test('the full order flow works through HTTP with every gate in place', async ()
     assert.equal(canceled.status, 200);
     assert.equal(canceled.body.order.status, 'CANCELED');
 
+    // Phase 13: the polling user-data stream can be started/stopped over HTTP
+    const streamStart = await b.call('POST', '/api/stream/start', { sessionId, intervalMs: 3_600_000, staleAfterMs: 3_600_000 });
+    assert.equal(streamStart.status, 200);
+    assert.equal(streamStart.body.stream.running, true);
+    const streamGet = await b.call('GET', '/api/stream');
+    assert.equal(streamGet.body.stream.running, true);
+    assert.equal(streamGet.body.stream.sessionId, sessionId);
+    const streamStop = await b.call('POST', '/api/stream/stop');
+    assert.equal(streamStop.status, 200);
+    assert.equal(streamStop.body.stream.running, false);
+
     // filter refusal: below minQty, still no extra exchange order
     const filtered = await b.call('POST', '/api/orders', { sessionId, symbol: 'BTCUSDT', side: 'BUY', type: 'MARKET', quantity: 0.0000001, referencePrice: 60_000, intentId: 'api:3' });
     assert.equal(filtered.status, 409);

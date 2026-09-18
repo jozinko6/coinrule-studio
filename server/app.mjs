@@ -240,6 +240,20 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
       return respond(report.state === 'failed' ? 502 : 200, { ok: report.state !== 'failed', report });
     }
 
+    if (urlPath === '/api/stream' && req.method === 'GET') return respond(200, { ok: true, stream: context.streamStatus() });
+    if (urlPath === '/api/stream/start' && req.method === 'POST') {
+      const body = await readJson(req);
+      const status = context.startStream(String(body.sessionId ?? ''), {
+        ...(body.intervalMs ? { intervalMs: Number(body.intervalMs) } : {}),
+        ...(body.staleAfterMs ? { staleAfterMs: Number(body.staleAfterMs) } : {}),
+      });
+      return respond(200, { ok: true, stream: status });
+    }
+    if (urlPath === '/api/stream/stop' && req.method === 'POST') {
+      context.stopStream();
+      return respond(200, { ok: true, stream: context.streamStatus() });
+    }
+
     if (urlPath === '/api/orders' && req.method === 'GET') {
       const sessionId = url.searchParams.get('sessionId');
       if (!sessionId) throw Object.assign(new Error('Chýba sessionId.'), { statusCode: 400 });
@@ -303,6 +317,7 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
         server.close(() => resolve());
         if (force && typeof server.closeAllConnections === 'function') server.closeAllConnections();
       });
+      try { context?.stopStream?.(); } catch { /* stream already stopped */ }
       if (db) {
         try { db.close(); } catch { /* already closed */ }
         db = null;

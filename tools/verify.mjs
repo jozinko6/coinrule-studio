@@ -7,6 +7,7 @@
  *   1. lint          (syntax, forbidden patterns, import + asset resolution)
  *   2. unit tests    (node --test tests/)
  *   3. runtime smoke (boot the real static server, fetch every asset, check 200)
+ *   4. repo hygiene  (no source file may be git-ignored - it would be missing from clones)
  *
  * Writes .longrun/verification_report.json and exits non-zero on any failure.
  */
@@ -113,15 +114,48 @@ async function gateSmoke() {
   }
 }
 
+/* ---------------------------------------------------------------- gate 4 */
+
+/**
+ * A source file that is silently git-ignored exists locally but not in a fresh
+ * clone (this actually shipped once: the "data/" ignore rule swallowed
+ * js/data/backend.js and the clone failed 0/3). Fail loudly instead.
+ */
+function gateRepoHygiene() {
+  const probe = spawnSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: ROOT, encoding: 'utf8' });
+  if (probe.status !== 0 || !/true/.test(probe.stdout ?? '')) {
+    return record('repo-hygiene', true, 'nie je git work tree - preskočené');
+  }
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/[.](js|mjs|json|html|css)$/.test(full)) files.push(path.relative(ROOT, full).replace(/\\/g, '/'));
+    }
+  };
+  for (const dir of ['js', 'server', 'tools', 'tests']) {
+    const base = path.join(ROOT, dir);
+    if (fs.existsSync(base)) walk(base);
+  }
+  const check = spawnSync('git', ['check-ignore', '--stdin'], { cwd: ROOT, input: files.join('\n'), encoding: 'utf8' });
+  const ignored = (check.stdout ?? '').split('\n').map((s) => s.trim()).filter(Boolean);
+  const detail = ignored.length
+    ? 'ignorované zdrojové súbory (chýbajú v klone!): ' + ignored.slice(0, 5).join(', ')
+    : files.length + ' zdrojových súborov, 0 ignorovaných';
+  return record('repo-hygiene', ignored.length === 0, detail);
+}
 /* ------------------------------------------------------------------- main */
 
 process.stdout.write('CoinRule Studio — verifikácia\n\n');
 const okLint = gateLint();
 const okTests = gateTests();
 const okSmoke = await gateSmoke();
+const okHygiene = gateRepoHygiene();
 
-const passed = [okLint, okTests, okSmoke].filter(Boolean).length;
-const allOk = passed === 3;
+const passed = [okLint, okTests, okSmoke, okHygiene].filter(Boolean).length;
+const allOk = passed === 4;
 const report = {
   schema: 1,
   generatedAt: new Date(started).toISOString(),

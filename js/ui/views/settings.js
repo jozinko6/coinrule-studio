@@ -94,6 +94,9 @@ function renderBackendPanel() {
           },
         }, 'Odpojiť')))));
 
+  if (!/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(backendInfo.url)) {
+    card.append(h('p', { class: 'neg' }, 'Pozor: adresa backendu nie je loopback — kľúče by mohli odísť mimo tento počítač.'));
+  }
   if (backendInfo.error) card.append(h('p', { class: 'neg' }, backendInfo.error));
   if (backendInfo.note && !backendInfo.error) card.append(h('p', { class: 'muted small' }, backendInfo.note));
 

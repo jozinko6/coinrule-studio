@@ -119,6 +119,29 @@ test('every view module exposes render() and optional afterMount()', async () =>
   }
 });
 
+test('hidden-by-default elements cannot be un-hidden by their own CSS', () => {
+  // Regression guard: `.modal-root { display: grid }` used to defeat the `hidden` attribute,
+  // leaving a full-screen invisible overlay that swallowed every click.
+  const html = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(ROOT_DIR, 'css', 'app.css'), 'utf8');
+  const hiddenEls = [...html.matchAll(/<[^>]*\shidden(?:\s|>)[^>]*>/g)].map((m) => m[0]);
+  assert.ok(hiddenEls.length >= 1, 'no hidden-by-default element found in index.html');
+  for (const el of hiddenEls) {
+    const cls = (el.match(/class="([^"]+)"/) || [])[1];
+    if (!cls) continue;
+    for (const name of cls.split(/\s+/)) {
+      const ruleStart = css.indexOf('.' + name + ' {');
+      if (ruleStart < 0) continue;
+      const ruleBody = css.slice(ruleStart, css.indexOf('}', ruleStart));
+      if (!ruleBody.includes('display')) continue;
+      const guardStart = css.indexOf('.' + name + '[hidden]');
+      assert.ok(guardStart >= 0, '.' + name + ' sets display but has no [hidden] guard (it would cover the UI)');
+      const guardBody = css.slice(guardStart, css.indexOf('}', guardStart));
+      assert.ok(guardBody.includes('display: none') || guardBody.includes('display:none'), '.' + name + '[hidden] must set display: none');
+    }
+  }
+});
+
 test('the app entry point and every core module exist and parse', async () => {
   const files = ['js/app.js', 'js/core/indicators.js', 'js/core/rules.js', 'js/core/strategies.js',
     'js/core/risk.js', 'js/core/portfolio.js', 'js/core/paper.js', 'js/core/metrics.js',

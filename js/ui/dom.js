@@ -161,6 +161,7 @@ export function modal({ title, body, actions = [], onClose = null, wide = false 
   const close = () => {
     clear(root);
     root.hidden = true;
+    root.style.display = 'none';
     onClose?.();
   };
   const box = h('div', { class: 'modal', style: wide ? { width: 'min(980px, 100%)' } : null },
@@ -170,6 +171,7 @@ export function modal({ title, body, actions = [], onClose = null, wide = false 
       ...actions.map((a) => button(a.label, () => { const keep = a.onClick?.(); if (!keep) close(); }, a.class ?? 'btn'))));
   mount(root, box);
   root.hidden = false;
+  root.style.display = 'grid';
   root.onclick = (e) => { if (e.target === root) close(); };
   return { close, box };
 }

@@ -349,6 +349,7 @@ canvas { display: block; width: 100%; background: #0d141d; border: 1px solid var
 
 .toasts { position: fixed; right: 1rem; bottom: 1rem; display: flex; flex-direction: column; gap: .5rem; z-index: 60; }
 .toast {
+  pointer-events: auto;
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent-2);
@@ -364,6 +365,9 @@ canvas { display: block; width: 100%; background: #0d141d; border: 1px solid var
 @keyframes slide-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
 
 /* ---------------------------------------------------------------- modal */
+
+/* the overlay uses display:grid, which would otherwise defeat the HTML `hidden` attribute */
+.modal-root[hidden] { display: none; }
 
 .modal-root {
   position: fixed;

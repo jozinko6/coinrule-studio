@@ -86,7 +86,7 @@ Report: .longrun/verification_report.json
 
 # Milestone 2 (2026-09-18) — scanner, alerts, Coinrule library, GitHub
 
-## Status: COMPLETE (independent verifier PASS; 2 minor findings resolved)
+## Status: COMPLETE (independent verifier PASS; 2 minor findings resolved; post-release click-blocker fixed)
 
 ### Delivered
 - `js/core/scanner.js` + view `scanner` — 12 presetov, viacpárový sken so skóre.
@@ -135,3 +135,19 @@ Verdict: PASS (3/3)
 - Overené príkazmi: HTTP 200 na `/` aj `/js/core/scanner.js` cez bat, chýbajúci Node
   → exit 1 s návodom, obsadený port → zrozumiteľná chyba a exit 1, oneskorené
   otvorenie prehliadača s korektným portom.
+
+### Opravené po nasadení: neklikateľné UI (overlay)
+- Príznak: po spustení cez `SPUSTIT.bat` sa nedalo na nič kliknúť, celá stránka stmavená.
+- Príčina: `.modal-root { display: grid }` (autor) prebil HTML atribút `hidden`
+  (UA pravidlo `[hidden] { display: none }` má nižšiu váhu než autorské), takže
+  neviditeľný celoobrazovkový overlay so `z-index: 80` zachytával všetky kliky.
+  Programové `.click()` v stub-DOM testoch ho obchádzajú — preto to testy neodhalili.
+- Oprava: `.modal-root[hidden] { display: none; }`, inline `style="display:none"` v
+  `index.html` a `modal()` v `dom.js` explicitne nastavuje `style.display` (grid/none).
+  `.toasts` dostali `pointer-events: none` (+ `.toast` auto).
+- Regresná ochrana: smoke test „hidden-by-default elements cannot be un-hidden by their
+  own CSS“ zlyhá, ak trieda s `display` nemá `[hidden]` guard.
+- Dôkaz v reálnom Chrome (CDP, skutočné kliknutia myšou): `elementFromPoint` vracia
+  `BUTTON` (predtým overlay), kliky prešli `scanner → alerts → dashboard`, sken
+  vrátil 3 výsledky, v stránke 0 výnimiek.
+- Gate po oprave: `node tools/verify.mjs` → PASS 3/3 (lint 55, 248 testov, 34 assetov).

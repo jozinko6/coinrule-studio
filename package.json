@@ -8,7 +8,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "start": "node tools/serve.mjs",
+    "start": "node server/app.mjs",
     "test": "node --test",
     "verify": "node tools/verify.mjs",
     "lint": "node tools/lint.mjs"

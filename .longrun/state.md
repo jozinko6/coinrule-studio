@@ -310,3 +310,40 @@ Phase 6+21: `server/app.mjs` on 127.0.0.1 with `GET /api/health` {ok, db, mode},
 SPUSTIT.bat health-check before opening the browser; then Phase 8 mode state machine (OFFLINE/PAPER/
 TESTNET/LIVE with explicit opt-in), Phase 11 idempotency (clientOrderId + live_orders reconciliation),
 Phase 12 reconciliation on startup.
+
+
+# Long-run upgrade — cycle 4 (2026-09-18): local backend + launcher
+
+## Delivered
+- `server/app.mjs` — one process serves the UI and the API:
+  * binds 127.0.0.1 by default; any other host is refused unless `COINRULE_ALLOW_LAN=1`;
+  * `GET /api/health` -> { ok, app, version, mode, liveEnabled, db:{ok, file, schemaVersion, migrations}, uptimeMs };
+  * `GET /api/ping`, JSON 404 for unknown API routes, OPTIONS preflight;
+  * CORS only for loopback Origins (others get 403 `cors`), no-store + nosniff + CSP on HTML;
+  * default mode PAPER, `liveEnabled:false` always after start (no implicit live);
+  * clean shutdown on SIGINT/SIGTERM; `app.close({force})` is idempotent and closes the DB.
+- `tools/serve.mjs` — **security fix**: static serving is now limited to an explicit allowlist
+  (index.html + js/, css/, assets/). Before this, the whole repo was downloadable over HTTP,
+  including `data/coinrule-studio.db` and `.git/`. Marked with PUBLIC_DIRS/PUBLIC_FILES/isPublicPath.
+- `tools/open-when-ready.mjs` — polls /api/health and only then opens the browser (exported,
+  unit-tested with stubbed fetch, loopback-only URLs).
+- `SPUSTIT.bat` — starts `server\\app.mjs` in the foreground (Ctrl+C = clean stop) and uses the
+  health-gated opener; error text now mentions port conflicts and a damaged DB.
+- `package.json` — `npm start` now runs the backend.
+- Tests: `tests/server-app.test.js` 8/8 (health, static+CSP, traversal/private-file refusal,
+  API 404, CORS, non-loopback refusal, broken DB -> 503 + UI still served, idempotent shutdown),
+  `tests/open-when-ready.test.js` 3/3.
+
+## Runtime evidence
+Started the real backend on 127.0.0.1:8899 and probed it: health 200 {mode:paper, db:true},
+opener exit 0 ("Backend je pripravený"), `/server/app.mjs` -> 403, process stopped cleanly.
+
+## Next safe step
+Phase 8 mode state machine (OFFLINE/PAPER/TESTNET/LIVE, explicit opt-in, no auto-live), Phase 11
+idempotency (clientOrderId + live_orders table + reconcile-before-retry), Phase 12 startup
+reconciliation (openOrders/allOrders/myTrades vs local state), Phase 13 user data stream.
+
+## Post-gate fix (same cycle)
+The smoke test caught that turning unknown directories into 403 was a behaviour change; private
+and escaping paths now answer **404 (not found)** in both servers, so nothing leaks whether a
+private file exists. Full gate after the fix: lint 76 files, 320/320 tests, smoke 35 assets — PASS.

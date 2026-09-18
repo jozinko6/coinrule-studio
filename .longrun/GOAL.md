@@ -78,7 +78,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 3 SQLite DB + migrations | **DONE (core)** | server/db/*, tests/db.test.js 10/10; UI wiring pending |
 | 4 History UI | pending | — |
 | 5 localStorage → SQLite migration | **DONE (core)** | importLegacyState, idempotent, tested |
-| 6 Local backend (127.0.0.1 only) | pending | — |
+| 6 Local backend (127.0.0.1 only) | **DONE** | server/app.mjs (loopback guard, /api/health, CORS, static allowlist), tests/server-app.test.js 8/8 |
 | 7 BinancePrivate (signed API) | **DONE (core)** | server/exchange/{signing,binance-private}.mjs; tests/exchange.test.js 9/9 + tests/binance-private.test.js 14/14 |
 | 8 Trading modes state machine | pending | — |
 | 9 Exchange filters | **DONE (core)** | server/exchange/filters.mjs (tick/step/notional/status), 9/9 tests |
@@ -94,8 +94,8 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 18 Append-only DB write model | pending | — |
 | 19 Settings UI (Binance) | pending | — |
 | 20 Dashboard modes | pending | — |
-| 21 Windows launcher + /api/health | pending | — |
-| 22 Clean shutdown | pending | — |
+| 21 Windows launcher + /api/health | **DONE** | SPUSTIT.bat + tools/open-when-ready.mjs (waits for health, then opens browser), 3/3 tests + live check |
+| 22 Clean shutdown | **DONE** | SIGINT/SIGTERM handler, app.close({force}) closes server + DB, idempotent, tested |
 
 | 24 Binance mock server | **DONE** | server/exchange/mock.mjs (signature/recvWindow checks, 401/403/429/418/500, timeout-after-accept, partial fill, duplicate id) |
 | 25 Testnet opt-in integration | pending | — |

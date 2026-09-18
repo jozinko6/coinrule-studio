@@ -30,13 +30,26 @@ export const MIME = {
   '.md': 'text/markdown; charset=utf-8',
 };
 
-/** Resolve a URL path to a file inside ROOT, or null when it escapes the root. */
-export function resolvePath(urlPath, root = ROOT) {
+/** Directories/files the HTTP layer may serve. Everything else (server/, data/, tools/, .git/, package.json) stays private. */
+export const PUBLIC_DIRS = ['js', 'css', 'assets'];
+export const PUBLIC_FILES = ['index.html', 'favicon.ico', 'manifest.webmanifest'];
+
+/** True when a path relative to the project root is part of the shipped frontend. */
+export function isPublicPath(relPath) {
+  const clean = String(relPath).replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!clean || clean.startsWith('.') || clean.split('/').some((seg) => seg.startsWith('.'))) return false;
+  if (!clean.includes('/')) return PUBLIC_FILES.includes(clean);
+  return PUBLIC_DIRS.includes(clean.split('/')[0]);
+}
+
+/** Resolve a URL path to a file inside ROOT, or null when it escapes the root or is private. */
+export function resolvePath(urlPath, root = ROOT, { publicOnly = true } = {}) {
   const decoded = decodeURIComponent((urlPath.split('?')[0] || '/'));
   const rel = decoded === '/' ? 'index.html' : decoded.replace(/^\/+/, '');
   const full = path.resolve(root, rel);
   const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
   if (full !== root && !full.startsWith(rootWithSep)) return null;
+  if (publicOnly && !isPublicPath(path.relative(root, full))) return null;
   return full;
 }
 
@@ -45,9 +58,10 @@ export function createStaticServer({ root = ROOT, onRequest = null } = {}) {
     const started = Date.now();
     const full = resolvePath(req.url ?? '/', root);
     if (!full) {
-      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('403 Zakázané');
-      onRequest?.(req, 403, started);
+      // Private (server/, data/, .git/, dotfiles) or escaping paths stay invisible.
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('404 Nenájdené');
+      onRequest?.(req, 404, started);
       return;
     }
     fs.stat(full, (err, stat) => {

@@ -275,3 +275,54 @@ Spolu 17 testovacích súborov (`tests/*.test.js`) plus pomocný stub DOM.
   Poznámka: `bb_squeeze` je detekcia začiatku squeezu (onset) — počas dlhej tichej fázy
   signál zmizne, keď sa tiché sviečky stanú referenčnou vzorkou.
   Projekt nie je nijako spojený s Coinrule ani ňou sponzorovaný.
+
+## 14. Lokálny backend a TESTNET/LIVE opt-in (fázy 6-15)
+
+Frontend je naďalej bez kľúčov; reálne obchodovanie beží **výhradne cez lokálny backend**
+na `127.0.0.1`. Spustenie: `SPUSTIT.bat [port]`, `npm start` alebo
+`node server/app.mjs --port 8787`. Backend servíruje aj UI, takže stačí jeden proces.
+
+**Admin token.** Pri štarte sa vypíše do konzoly token (alebo nastav `COINRULE_ADMIN_TOKEN`).
+Všetky `/api` cesty okrem `/api/health` a `/api/ping` vyžadujú hlavičku
+`X-CoinRule-Token: <token>`. CORS povoľuje len loopback pôvody.
+
+**Kľúče.** Zadaj ich buď cez `COINRULE_BINANCE_KEY` / `COINRULE_BINANCE_SECRET`
+(prípadne `COINRULE_BINANCE_BASE` pre iný host), alebo runtime cez
+`POST /api/credentials {"key": "...", "secret": "..."}`. Kľúče žijú len v RAM:
+nikdy sa neukladajú do DB, localStorage, logov ani URL a API ich nikdy nevracia
+(iba masku a fingerprint).
+
+**Módy.** `offline → paper → testnet → live`. Z paper sa do live nedá skočiť priamo;
+testnet vyžaduje uložené kľúče a live navyše presný reťazec `confirm: "LIVE"` a
+`acknowledgeRisk: true`. `disable` kedykoľvek vráti mód na paper.
+
+**Bezpečnostné invarianty.**
+* Kill switch je po štarte **zapnutý**; obchodovať sa začne až po jeho vedomom vypnutí.
+* Príkaz prejde len cez ExecutionBroker: mód → reconciliation `ok` → risk limity →
+  burzové filtre (tick/step/minNotional) → idempotencia → burza. Zrušenie príkazu je
+  povolené aj s aktívnym kill switchom (znižuje riziko).
+* Každý zámer má deterministické `clientOrderId`; timeout po prijatí alebo chyba -2010
+  sa značí ako `UNKNOWN` a rieši sa **len** reconciláciou, nikdy opätovným odoslaním.
+* User data stream (polling) pri strate kontaktu zapne kill switch a po obnovení ho
+  **nikdy sám nevypne**.
+* Auditná stopa objednávok je append-only aj na úrovni SQLite (triggery blokujú
+  UPDATE/DELETE) a citlivé polia sa redigujú pred zápisom.
+
+**API prehľad.** `GET /api/status|mode|risk|sessions|orders|stream`;
+`POST /api/mode` (`paper|offline|testnet|live|disable`), `POST /api/risk/killswitch`,
+`POST /api/credentials` (+`DELETE`), `POST /api/sessions`, `POST /api/sessions/reconcile`,
+`POST /api/orders`, `POST /api/orders/cancel`, `POST /api/stream/start|stop`.
+
+**Kline stream.** `js/core/stream.js` obsahuje browser WebSocket s backoff reconnectom
+a stale watchdogom (90 s); UI ho zapojí v ďalšej fáze (19/20).
+
+## 15. CI a známe obmedzenia (fáza 26)
+
+* `.github/workflows/verify.yml` spúšťa `node tools/verify.mjs` na push/PR (Node 24)
+  a nahráva verifikačný report ako artefakt.
+* GitHub Actions na tomto účte **aktuálne nebeží**: behy končia za 6 s s hláškou
+  *"The job was not started because your account is locked due to a billing issue."*
+  Ide o externý problém účtu, nie o chybu repozitára.
+* Reálne TESTNET/LIVE kolo nebolo možné overiť (chýbajú kľúče); všetky burzové cesty sú
+  overené proti deterministickej mock burze (`server/exchange/mock.mjs`) a vlastným
+  harnessom nezávislého verifikátora.

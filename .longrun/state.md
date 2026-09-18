@@ -405,3 +405,26 @@ Phase 14 ExecutionBroker: one interface for PAPER/TESTNET/LIVE so the UI never t
 directly (paper -> js/core/paper.js, testnet/live -> idempotency + reconciler + LiveRiskGuard), with
 a hard rule that no order path bypasses the guard. Then Phase 13 (user data stream polling fallback
 is already reconcilable) and Phase 15 action handlers.
+
+
+# Long-run upgrade — cycle 7 (2026-09-18): ExecutionBroker
+
+## Delivered
+- `server/services/execution-broker.mjs` — the single gate for real orders. Mandatory order of checks:
+  mode (TESTNET/LIVE only) -> session reconciliation must be ok -> LiveRiskGuard (kill switch, limits)
+  -> exchange filters (step/tick/minNotional normalisation) -> OrderIdempotency -> exchange.
+  Cancellations skip the risk gate (risk-reducing) but still require a live mode and a clean session.
+  The guard reserves the ACTUAL notional computed after step normalisation (was raw before).
+- Mock exchange: MARKET_LOT_SIZE step 0.00001000 (realistic) so market orders are filtered too.
+- Tests `tests/execution-broker.test.js` 8/8: paper-mode refusal, unreconciled-session refusal,
+  kill switch blocks placing but not cancelling, exactly-once submission, filter + risk refusals with
+  zero signed requests, unknown symbol refused, reduce-only bypass.
+
+## Verification
+Full gate: lint 85 files 0 warnings, 352/352 tests, smoke 35 assets — PASS (3/3).
+
+## Next safe step
+Wire the broker + mode + guard into `server/app.mjs` HTTP endpoints (Phase 15 action handlers:
+GET /api/mode, POST /api/mode/testnet|live|paper, GET /api/risk, POST /api/orders behind admin-token
+auth), then Phase 13 user-data-stream polling loop, Phase 19/20 UI (Settings + Dashboard modes),
+Phase 4 History UI and Phase 26 CI. Remaining UI phases need browser QA via Chrome CDP.

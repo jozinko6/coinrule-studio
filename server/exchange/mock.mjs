@@ -22,7 +22,7 @@ export const MOCK_EXCHANGE_INFO = {
       filters: [
         { filterType: 'PRICE_FILTER', tickSize: '0.01000000' },
         { filterType: 'LOT_SIZE', stepSize: '0.00001000', minQty: '0.00001000', maxQty: '9000.00000000' },
-        { filterType: 'MARKET_LOT_SIZE', stepSize: '0.00000000', minQty: '0.00000000', maxQty: '178.00000000' },
+        { filterType: 'MARKET_LOT_SIZE', stepSize: '0.00001000', minQty: '0.00001000', maxQty: '178.00000000' },
         { filterType: 'NOTIONAL', minNotional: '10.00000000', applyMinNotional: true },
       ],
     },

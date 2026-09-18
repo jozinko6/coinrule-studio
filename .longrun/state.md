@@ -273,3 +273,40 @@ dependencies**, so the project keeps its no-install constraint on Windows.
 Phase 6+7: local backend skeleton (`server/app.mjs`, 127.0.0.1 only, CORS for the local frontend,
 `GET /api/health`), then `BinancePrivate` (HMAC signed, recvWindow 5000, timestamp offset) with a
 mock exchange for deterministic tests, followed by the LiveRiskGuard and idempotency/reconciliation.
+
+
+# Long-run upgrade — cycle 3 (2026-09-18): signed exchange + live safety
+
+## Delivered
+- `server/exchange/signing.mjs` — Binance canonical query encoding (%-encoding of /, &, =, space),
+  HMAC-SHA256 `signQuery` (verified against the published RFC test vector), `signedQuery` with
+  timestamp + recvWindow, `maskApiKey`/`fingerprintApiKey` so the raw key is never displayed or stored.
+- `server/exchange/filters.mjs` — PRICE_FILTER/LOT_SIZE/MARKET_LOT_SIZE/NOTIONAL/status handling,
+  `floorToStep`, `roundToTick`, `normalizeQuantity`, `normalizePrice`, `normalizeOrder`, and a
+  TTL-cached `SymbolRulesCache`. Fixed `decimalsFromStep` to count SIGNIFICANT decimals (0.00100000 -> 3).
+- `server/exchange/binance-private.mjs` — signed client: automatic clock sync with offset (TTL 30 min),
+  `-1021` resync, typed `BinanceApiError` (status/code/retryAfter/duplicate) and `BinanceTimeoutError`
+  with `requestAccepted`; GET-only retry on 5xx; POST/DELETE are NEVER resent; withdrawal endpoints are
+  hard-blocked BEFORE any network call; `describe()` exposes only masked key + fingerprint.
+- `server/exchange/mock.mjs` — deterministic Binance double: verifies the exact HMAC payload and
+  recvWindow like the real API, and can script 401/403, 429 (+Retry-After), 418, 500, timestamp drift,
+  timeout-after-accept, partial fill, filled, canceled, duplicate clientOrderId and unknown endpoints.
+- `server/services/live-risk.mjs` — LiveRiskGuard with injectable clock: kill switch (starts ENGAGED),
+  maxOrderQuote, maxPositionQuote, maxPositionPct of equity, maxDailyLossPct, maxDrawdownPct,
+  maxTradesPerHour, maxOpenOrders, maxConsecutiveLosses, cooldownAfterLoss, allowed/blocked symbols;
+  reduce-only orders bypass size limits but never the kill switch; `snapshot()` for the UI.
+- Tests: `tests/exchange.test.js` 9, `tests/binance-private.test.js` 14, `tests/live-risk.test.js` 9.
+
+## Policy change (lint, deliberate and narrow)
+The credential ban now allows `server/**` (local backend) and its two test files via an explicit
+`CREDENTIAL_ALLOWED` list; the frontend (`js/**`) remains under the absolute ban, and the linter itself
+documents the policy. Nothing else was weakened.
+
+## Verification
+Full gate: lint 72 files 0 warnings, 309/309 tests, runtime smoke 35 assets — PASS (3/3).
+
+## Next safe step
+Phase 6+21: `server/app.mjs` on 127.0.0.1 with `GET /api/health` {ok, db, mode}, clean shutdown,
+SPUSTIT.bat health-check before opening the browser; then Phase 8 mode state machine (OFFLINE/PAPER/
+TESTNET/LIVE with explicit opt-in), Phase 11 idempotency (clientOrderId + live_orders reconciliation),
+Phase 12 reconciliation on startup.

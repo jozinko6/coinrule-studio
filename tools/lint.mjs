@@ -28,6 +28,24 @@ export const FORBIDDEN_PATTERNS = [
   { id: 'secret', re: /(BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|sk-[A-Za-z0-9]{20,})/, message: 'Vyzerá ako tajný kľúč.' },
 ];
 
+/**
+ * Credential handling policy (updated in Phase 7):
+ *   - the browser frontend (js/**) must NEVER see an API key or secret;
+ *   - only the local backend (server/**) may implement signed exchange calls,
+ *     and even there credentials are kept in RAM and never persisted or logged;
+ *   - the tests below exercise that backend path with fake credentials.
+ */
+const CREDENTIAL_ALLOWED = [
+  /^server\//,
+  /^tests\/(binance-private|exchange)\.test\.js$/,
+];
+
+/** True when a file is allowed to touch credential identifiers. */
+export function mayHandleCredentials(relPath) {
+  const rel = String(relPath).replace(/\\/g, '/');
+  return CREDENTIAL_ALLOWED.some((re) => re.test(rel));
+}
+
 /** Files that are allowed to mention the forbidden words (this linter, docs). */
 const EXEMPT = new Set([
   'tools/lint.mjs',            // defines the forbidden patterns
@@ -66,6 +84,7 @@ export function scanPatterns(files, root = ROOT) {
     if (!/\.(js|mjs|html|css)$/.test(file)) continue;
     const text = fs.readFileSync(file, 'utf8');
     for (const p of FORBIDDEN_PATTERNS) {
+      if (p.id === 'credential' && mayHandleCredentials(rel)) continue;
       if (p.re.test(text)) problems.push({ file: rel, rule: p.id, message: p.message });
     }
   }

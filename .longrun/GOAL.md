@@ -79,17 +79,17 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 4 History UI | pending | — |
 | 5 localStorage → SQLite migration | **DONE (core)** | importLegacyState, idempotent, tested |
 | 6 Local backend (127.0.0.1 only) | pending | — |
-| 7 BinancePrivate (signed API) | pending | — |
+| 7 BinancePrivate (signed API) | **DONE (core)** | server/exchange/{signing,binance-private}.mjs; tests/exchange.test.js 9/9 + tests/binance-private.test.js 14/14 |
 | 8 Trading modes state machine | pending | — |
-| 9 Exchange filters | pending | — |
-| 10 Live risk engine + kill switch | pending | — |
+| 9 Exchange filters | **DONE (core)** | server/exchange/filters.mjs (tick/step/notional/status), 9/9 tests |
+| 10 Live risk engine + kill switch | **DONE (core)** | server/services/live-risk.mjs, tests/live-risk.test.js 9/9 (kill switch default ON) |
 | 11 Idempotency | pending | — |
 | 12 Reconciliation | pending | — |
 | 13 User data stream | pending | — |
 | 14 ExecutionBroker interface | pending | — |
 | 15 Action handler completeness | pending | — |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
-| 23 Tests (full list) | in progress | 12 execution + 10 DB tests added; more per phase |
+| 23 Tests (full list) | in progress | 309 tests total; +9 signing/filters, +14 private client vs mock, +9 live risk |
 | 17 Multi-strategy accounting | pending | — |
 | 18 Append-only DB write model | pending | — |
 | 19 Settings UI (Binance) | pending | — |
@@ -97,7 +97,7 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 21 Windows launcher + /api/health | pending | — |
 | 22 Clean shutdown | pending | — |
 
-| 24 Binance mock server | pending | — |
+| 24 Binance mock server | **DONE** | server/exchange/mock.mjs (signature/recvWindow checks, 401/403/429/418/500, timeout-after-accept, partial fill, duplicate id) |
 | 25 Testnet opt-in integration | pending | — |
 | 26 CI | pending | — |
 

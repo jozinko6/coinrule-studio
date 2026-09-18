@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-09-18T10:40:01.303Z",
+  "durationMs": 16383,
+  "node": "v24.18.0",
+  "platform": "win32",
+  "gates": [
+    {
+      "gate": "lint",
+      "ok": true,
+      "detail": "55 súborov, 0 varovaní"
+    },
+    {
+      "gate": "unit-tests",
+      "ok": true,
+      "detail": "247 prešlo, 0 zlyhalo"
+    },
+    {
+      "gate": "runtime-smoke",
+      "ok": true,
+      "detail": "34 assetov (32 JS) cez http://127.0.0.1:56661 (port 56661)"
+    }
+  ],
+  "passed": 3,
+  "total": 3,
+  "verdict": "PASS"
+}

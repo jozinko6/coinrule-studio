@@ -1,0 +1,18 @@
+{
+  "name": "coinrule-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Coinrule-style rule-based crypto trading platform with Binance public market data and virtual trading. No API keys, no third parties, no external programs.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node --test",
+    "verify": "node tools/verify.mjs",
+    "lint": "node tools/lint.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

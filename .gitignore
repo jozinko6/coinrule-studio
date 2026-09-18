@@ -1,0 +1,12 @@
+# dependencies (the project intentionally has none)
+node_modules/
+npm-debug.log*
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+
+# local scratch
+*.log

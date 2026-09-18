@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="CoinRule Studio — pravidlový krypto trading bot s verejnými dátami Binance a virtuálnym obchodovaním. Bez API kľúčov.">
+<title>CoinRule Studio — pravidlový trading bot (virtuálne obchodovanie)</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>📈</text></svg>">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<a class="skip-link" href="#view">Preskočiť na obsah</a>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo" aria-hidden="true">◆</span>
+    <div>
+      <h1>CoinRule Studio</h1>
+      <p class="tagline">Pravidlový trading bot · virtuálne obchodovanie</p>
+    </div>
+  </div>
+
+  <div class="market-controls">
+    <label class="field">
+      <span>Pár</span>
+      <select id="symbol-select" aria-label="Obchodný pár"></select>
+    </label>
+    <label class="field">
+      <span>Timeframe</span>
+      <select id="timeframe-select" aria-label="Časový rámec"></select>
+    </label>
+    <label class="field">
+      <span>Zdroj dát</span>
+      <select id="source-select" aria-label="Zdroj dát">
+        <option value="auto">Auto (Binance → simulácia)</option>
+        <option value="binance">Binance (verejné API)</option>
+        <option value="synthetic">Simulované (offline)</option>
+      </select>
+    </label>
+    <button id="reload-data" class="btn" type="button" title="Znovu načítať sviečky">Načítať</button>
+  </div>
+
+  <div class="status-area">
+    <span id="market-status" class="pill pill-idle" role="status">nepripojené</span>
+    <span id="price-ticker" class="ticker">—</span>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="sidebar" aria-label="Hlavná navigácia">
+    <button class="nav-btn" data-view="dashboard" type="button"><span>📊</span> Prehľad</button>
+    <button class="nav-btn" data-view="strategies" type="button"><span>📚</span> Stratégie</button>
+    <button class="nav-btn" data-view="editor" type="button"><span>🧩</span> Editor pravidiel</button>
+    <button class="nav-btn" data-view="scanner" type="button"><span>⌕</span> Skenovať trh</button>
+    <button class="nav-btn" data-view="alerts" type="button"><span>🔔</span> Upozornenia</button>
+    <button class="nav-btn" data-view="backtest" type="button"><span>⏱️</span> Backtest</button>
+    <button class="nav-btn" data-view="paper" type="button"><span>🤖</span> Virtuálne obchodovanie</button>
+    <button class="nav-btn" data-view="trades" type="button"><span>🧾</span> Obchody a portfólio</button>
+    <button class="nav-btn" data-view="indicators" type="button"><span>📐</span> Indikátory</button>
+    <button class="nav-btn" data-view="settings" type="button"><span>⚙️</span> Nastavenia</button>
+    <div class="sidebar-footer">
+      <p class="muted small">Bez API kľúčov. Bez tretích strán.<br>Verejné dáta Binance + lokálna simulácia.</p>
+    </div>
+  </nav>
+
+  <main id="view" tabindex="-1"></main>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="modal-root" class="modal-root" hidden></div>
+
+<script type="module" src="js/app.js"></script>
+<noscript>
+  <p style="padding:2rem;color:#fff">Táto aplikácia vyžaduje zapnutý JavaScript.</p>
+</noscript>
+</body>
+</html>

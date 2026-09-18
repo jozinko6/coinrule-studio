@@ -80,16 +80,16 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 5 localStorage → SQLite migration | **DONE (core)** | importLegacyState, idempotent, tested |
 | 6 Local backend (127.0.0.1 only) | **DONE** | server/app.mjs (loopback guard, /api/health, CORS, static allowlist), tests/server-app.test.js 8/8 |
 | 7 BinancePrivate (signed API) | **DONE (core)** | server/exchange/{signing,binance-private}.mjs; tests/exchange.test.js 9/9 + tests/binance-private.test.js 14/14 |
-| 8 Trading modes state machine | pending | — |
+| 8 Trading modes state machine | **DONE (core)** | server/services/mode.mjs (offline/paper/testnet/live, testnet-first, typed confirm for live), tests/mode.test.js 9/9 |
 | 9 Exchange filters | **DONE (core)** | server/exchange/filters.mjs (tick/step/notional/status), 9/9 tests |
 | 10 Live risk engine + kill switch | **DONE (core)** | server/services/live-risk.mjs, tests/live-risk.test.js 9/9 (kill switch default ON) |
-| 11 Idempotency | pending | — |
-| 12 Reconciliation | pending | — |
+| 11 Idempotency | **DONE (core)** | server/services/idempotency.mjs + live-repository; deterministic intent hash ids, never resend after timeout (-2010/timeout -> UNKNOWN), tests/idempotency.test.js 8/8 |
+| 12 Reconciliation | in progress | live-repository READY (open orders / UNKNOWN orders / fills); startup reconcile pass pending |
 | 13 User data stream | pending | — |
 | 14 ExecutionBroker interface | pending | — |
 | 15 Action handler completeness | pending | — |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
-| 23 Tests (full list) | in progress | 309 tests total; +9 signing/filters, +14 private client vs mock, +9 live risk |
+| 23 Tests (full list) | in progress | 337 tests; +9 mode, +8 idempotency (exactly-once vs mock+DB) |
 | 17 Multi-strategy accounting | pending | — |
 | 18 Append-only DB write model | pending | — |
 | 19 Settings UI (Binance) | pending | — |

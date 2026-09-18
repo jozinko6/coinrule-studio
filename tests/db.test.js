@@ -64,8 +64,11 @@ test('a fresh database creates the full schema and records the migration', () =>
   const tables = tableNames(db);
   for (const name of TABLE_NAMES) assert.ok(tables.includes(name), `chýba tabuľka ${name}`);
   const applied = appliedMigrations(db);
-  assert.equal(applied.length, 1);
-  assert.equal(applied[0].name, 'init');
+  assert.deepEqual(applied.map((m) => m.id).sort(), [1, 2], 'both migrations must be recorded');
+  const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'uniq_live_orders_client_id'").all();
+  assert.equal(indexes.length, 1, 'the clientOrderId unique index must exist after migrations');
+  assert.equal(applied.length, 2);
+  assert.deepEqual(applied.map((m) => m.name), ['init', 'live_orders_client_id_unique']);
   assert.equal(db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
@@ -75,7 +78,7 @@ test('migrations are idempotent', () => {
   const { file, dir } = tempDb('idem');
   const db = openDatabase({ file });
   assert.equal(runMigrations(db).applied, 0, 'a second run must apply nothing');
-  assert.equal(appliedMigrations(db).length, 1);
+  assert.equal(appliedMigrations(db).length, 2);
   db.close();
   fs.rmSync(dir, { recursive: true, force: true });
 });

@@ -6,9 +6,17 @@
  * database can never be left half-migrated.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const MIGRATIONS = [
+  {
+    id: 2,
+    name: 'live_orders_client_id_unique',
+    up(db) {
+      // One order per clientOrderId — the database-level guard for idempotent submission.
+      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS uniq_live_orders_client_id ON live_orders (client_order_id) WHERE client_order_id IS NOT NULL;');
+    },
+  },
   {
     id: 1,
     name: 'init',

@@ -347,3 +347,32 @@ reconciliation (openOrders/allOrders/myTrades vs local state), Phase 13 user dat
 The smoke test caught that turning unknown directories into 403 was a behaviour change; private
 and escaping paths now answer **404 (not found)** in both servers, so nothing leaks whether a
 private file exists. Full gate after the fix: lint 76 files, 320/320 tests, smoke 35 assets — PASS.
+
+# Long-run upgrade — cycle 5 (2026-09-18): modes + exactly-once orders
+
+## Delivered
+- `server/services/mode.mjs` — OFFLINE/PAPER/TESTNET/LIVE machine. Default paper; testnet needs stored
+  credentials; live is reachable ONLY from testnet with `confirm:"LIVE"` + `acknowledgeRisk:true`;
+  offline cannot be entered from testnet/live; `disableLive()` always returns to paper; every
+  transition is logged with a reason. The guard kill switch is intentionally untouched by transitions.
+- `server/db/live-repository.mjs` — live sessions/orders/fills persistence (insert-or-ignore orders,
+  open-order queries, UNKNOWN handling, fills, fee totals) + migration 2 with a **UNIQUE partial index
+  on live_orders.client_order_id** (schema v2). `server-app` and `db` tests updated for v2.
+- `server/services/idempotency.mjs` — INTENT-driven clientOrderIds: `clientOrderIdFor` is a pure hash
+  of strategy+intentId+salt (no clock!), `OrderIdempotency.submit` refuses to run without an intentId
+  or explicit clientOrderId, persists PENDING before the network call, skips any existing id,
+  marks UNKNOWN for timeouts-after-accept and exchange duplicates (-2010) so only reconciliation can
+  clear them, marks REJECTED for clean API failures. IDs are never reused for a new submission.
+
+## Root cause fixed during the cycle
+The first version derived ids with `Date.now()`, so a retry of the same intent produced a NEW id and
+the mock exchange received the order twice. Caught by the new tests; ids are now deterministic and
+covered by a regression test.
+
+## Verification
+Full gate: lint 81 files 0 warnings, 337/337 tests, smoke 35 assets — PASS (3/3).
+
+## Next safe step
+Phase 12 reconciliation: on session start fetch openOrders/allOrders/myTrades, resolve UNKNOWN orders,
+verify local fills against exchange trades, and refuse trading until reconciliation_state = ok.
+Then Phase 14 ExecutionBroker (paper/live behind one interface) and Phase 13 user data stream.

@@ -27,6 +27,9 @@ export class ModeTransitionError extends Error {
 export class TradingModeManager {
   constructor({ clock = () => Date.now(), hasCredentials = () => false, onTransition = null, initial = 'paper' } = {}) {
     if (!MODES.includes(initial)) throw new Error(`Neznámy mód: ${initial}`);
+    if (initial === 'live' || initial === 'testnet') {
+      throw new Error('TradingModeManager: live/testnet nemožno inicializovať priamo — iba cez prechody s kontrolami.');
+    }
     this.clock = clock;
     this.hasCredentials = hasCredentials;
     this.onTransition = onTransition;

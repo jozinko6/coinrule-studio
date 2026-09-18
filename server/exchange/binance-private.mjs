@@ -14,7 +14,8 @@ import { encodeQuery, signedQuery, maskApiKey, fingerprintApiKey } from './signi
 
 export const BINANCE_TIMEOUT = 'BINANCE_TIMEOUT';
 export const WITHDRAWAL_BLOCKED = 'WITHDRAWAL_BLOCKED';
-const WITHDRAWAL_PATTERN = /withdraw|capital\/withdraw|\/capi\//i;
+// Any /sapi/ or /wapi/ (private account/wallet APIs), /capi/ and anything withdraw-shaped.
+const WITHDRAWAL_PATTERN = /withdraw|\/capi\/|\/sapi\/|\/wapi\//i;
 
 export class BinanceApiError extends Error {
   constructor({ status = 0, code = null, message = 'Binance API error', retryAfter = null, duplicate = false } = {}) {
@@ -38,8 +39,14 @@ export class BinanceTimeoutError extends Error {
 
 /** Withdrawals are out of scope for this application, permanently. */
 export function assertNoWithdrawal(path) {
-  if (WITHDRAWAL_PATTERN.test(String(path))) {
-    const err = new BinanceApiError({ message: `Zakázaný endpoint: ${path} (withdrawals nie sú podporované)` });
+  const raw = String(path ?? '');
+  // Percent-encoding must not smuggle a blocked path past the guard.
+  let decoded = raw;
+  for (let i = 0; i < 2; i += 1) {
+    try { const next = decodeURIComponent(decoded); if (next === decoded) break; decoded = next; } catch { break; }
+  }
+  if (WITHDRAWAL_PATTERN.test(decoded) || WITHDRAWAL_PATTERN.test(raw)) {
+    const err = new BinanceApiError({ message: `Zakázaný endpoint: ${raw} (withdrawals a privátne wallet API nie sú podporované)` });
     err.code = WITHDRAWAL_BLOCKED;
     throw err;
   }

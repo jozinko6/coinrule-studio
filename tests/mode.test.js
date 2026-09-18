@@ -84,8 +84,11 @@ test('testnet cannot be entered from live without returning to paper', async () 
   assert.equal(manager.mode, 'testnet');
 });
 
-test('an unknown initial mode is rejected', () => {
+test('an unknown initial mode is rejected and live/testnet cannot be constructed directly', () => {
   assert.throws(() => new TradingModeManager({ initial: 'lambo' }), /Neznámy mód/);
+  assert.throws(() => new TradingModeManager({ initial: 'live' }), /priamo/);
+  assert.throws(() => new TradingModeManager({ initial: 'testnet' }), /priamo/);
+  assert.equal(new TradingModeManager({ initial: 'offline' }).mode, 'offline');
 });
 
 test('snapshot reports mode, timing and full history', () => {

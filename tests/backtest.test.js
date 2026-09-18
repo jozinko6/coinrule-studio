@@ -182,3 +182,14 @@ test('paramSweep explores a knob and sorts by return', () => {
   }
   assert.throws(() => paramSweep({ strategy, candles, knob: 'nope.nope', values: [1] }), /neplatná cesta/);
 });
+
+test('the backtest result documents the assumptions it ran under (Phase 16)', () => {
+  const res = backtest({ strategy: alwaysBuy(), candles, startingCash: 10_000, feePct: 0.1, slippagePct: 0.05 });
+  assert.equal(res.assumptions.startingCash, 10_000);
+  assert.equal(res.assumptions.feePct, 0.1);
+  assert.equal(res.assumptions.slippagePct, 0.05);
+  assert.ok(res.assumptions.executionModel, 'the intrabar execution model must be recorded');
+  assert.ok(res.assumptions.participationRate > 0, 'liquidity participation must be recorded');
+  assert.equal(res.assumptions.timeframeMs, res.timeframeMs);
+  assert.ok(res.assumptions.candles > 0);
+});

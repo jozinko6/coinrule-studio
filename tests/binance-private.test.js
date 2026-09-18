@@ -130,12 +130,24 @@ test('a network timeout after the order was accepted is never resent automatical
   assert.ok(mock.getOrder('cr-timeout'), 'the caller can reconcile by clientOrderId');
 });
 
-test('withdrawals are hard-blocked before any network call', async () => {
+test('withdrawals and private wallet APIs are hard-blocked before any network call', async () => {
   const { mock, client } = make();
-  await assert.rejects(
-    client.request('POST', '/sapi/v1/capital/withdraw/apply', { signed: true }),
-    (err) => err instanceof BinanceApiError && err.code === WITHDRAWAL_BLOCKED,
-  );
+  const blocked = [
+    '/sapi/v1/capital/withdraw/apply',
+    '/sapi/v1/capital/%77ithdraw/apply',   // percent-encoding must not smuggle
+    '/SAPI/V1/CAPITAL/WITHDRAW/APPLY',
+    '/wapi/v3/withdraw.html',
+    '/capi/v1/withdraw',
+    '/sapi/v1/account/status',             // every private-API prefix is out of scope
+    '/api/v3/withdraw',
+  ];
+  for (const path of blocked) {
+    await assert.rejects(
+      client.request('GET', path, { signed: true }),
+      (err) => err instanceof BinanceApiError && err.code === WITHDRAWAL_BLOCKED,
+      `${path} must be blocked locally`,
+    );
+  }
   assert.equal(mock.state.counters.requests, 0, 'no HTTP request may leave the process');
   assert.equal(mock.state.counters.withdrawalAttempts, 0);
 });

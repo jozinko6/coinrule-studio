@@ -428,3 +428,34 @@ Wire the broker + mode + guard into `server/app.mjs` HTTP endpoints (Phase 15 ac
 GET /api/mode, POST /api/mode/testnet|live|paper, GET /api/risk, POST /api/orders behind admin-token
 auth), then Phase 13 user-data-stream polling loop, Phase 19/20 UI (Settings + Dashboard modes),
 Phase 4 History UI and Phase 26 CI. Remaining UI phases need browser QA via Chrome CDP.
+
+
+# Long-run upgrade — cycle 8 (2026-09-18): independent verification + hardening
+
+## Verifier result
+long-run-verifier (read-only, fresh session) returned **VERIFIED** at HEAD 81c0c4c:
+gate re-run PASS (lint 85, 352/352, smoke), remote == local HEAD, no skipped/weakened/deleted tests
+(286 assert lines added vs 4 replaced in the last 5 commits), and its OWN falsification scripts
+confirmed: withdrawal hard block with 0 fetch calls, zero credentials in js/**, kill switch engaged
+at construction, broker refusals (paper/unreconciled/kill-switch/filter) with 0 signed requests,
+exactly-once submission, static 404 for server,/data,.git,package.json, and the UNIQUE partial index
+on live_orders.client_order_id.
+
+## Findings fixed immediately (all three were verifier-identified, non-blocking)
+1. Withdrawal guard could be bypassed by percent-encoding (`/sapi/v1/capital/%77ithdraw/apply`):
+   the guard now decodes (up to two passes) and blocks ALL /sapi/, /wapi/, /capi/ prefixes.
+   Test extended to 7 blocked variants incl. encoded + uppercase, still asserting 0 HTTP requests.
+2. `new TradingModeManager({ initial: 'live' })` constructed live without transitions: now refused
+   for live/testnet (only offline/paper allowed as initial), covered by a test.
+3. Phase 16 had no direct assertion on `result.assumptions`: added a test asserting startingCash,
+   feePct, slippagePct, executionModel, participationRate, timeframeMs and candle count.
+
+## Verification
+Full gate: lint 85 files 0 warnings, 356/356 tests, smoke 35 assets — PASS (3/3).
+
+## Remaining (honest scope)
+Phases pending/partial: 2 (kline WS reconnect/stale), 4 (History UI), 13 (user data stream),
+15 (HTTP action handlers for mode/orders/risk), 17 (multi-strategy accounting), 18 (append-only
+write model), 19 (Settings UI Binance), 20 (Dashboard modes), 25 (testnet opt-in integration),
+26 (CI). Phase 23 stays in progress until those land. Exchange round-trips are mock-verified only —
+no real testnet credentials were available in this environment.

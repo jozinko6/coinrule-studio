@@ -121,3 +121,10 @@ Verdict: PASS (3/3)
 ### GitHub
 - repo: https://github.com/jozinko6/coinrule-studio (public)
 - commit `700662e` na `main`, lokálne HEAD == origin/main.
+
+### Independent verifier round (milestone 2) — findings resolved
+1. `bb_squeeze` je onset detekcia: počas dlhej tichej fázy signál zmizne, keď sa tiché
+   sviečky stanú referenčnou vzorkou. Zámer správania je vysvetlený v README (sekcia 12).
+2. `tools/verify.mjs` prepisoval sledovaný report a znečisťoval pracovný strom; report je
+   teraz v `.gitignore` a odstránený z indexu (na disku zostáva ako lokálny artefakt).
+3. Verifier verdict: **VERIFIED** — 247/247 testov, 0 skipped, žiadne oslabené assercie.

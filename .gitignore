@@ -16,3 +16,7 @@ desktop.ini
 
 # local user database (created automatically) - anchored so js/data stays tracked
 /data/
+# secrets and harness leftovers must never enter the repository
+*.env
+.env
+/.pass

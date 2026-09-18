@@ -222,4 +222,6 @@ Spolu 16 testovacích súborov (`tests/*.test.js`) plus pomocný stub DOM.
 * **Coinrule knižnica** — nová rodina `coinrule` so 42 šablónami podľa verejného zoznamu
   Coinrule (help.coinrule.com). Ide o nezávislú implementáciu rovnakých pravidiel v našom
   DSL, nie o kopírovanie textov či kódu; short šablóny sú adaptované na long-only spot.
+  Poznámka: `bb_squeeze` je detekcia začiatku squeezu (onset) — počas dlhej tichej fázy
+  signál zmizne, keď sa tiché sviečky stanú referenčnou vzorkou.
   Projekt nie je nijako spojený s Coinrule ani ňou sponzorovaný.

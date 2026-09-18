@@ -86,7 +86,7 @@ Report: .longrun/verification_report.json
 
 # Milestone 2 (2026-09-18) — scanner, alerts, Coinrule library, GitHub
 
-## Status: COMPLETE (independent verifier round pending)
+## Status: COMPLETE (independent verifier PASS; 2 minor findings resolved)
 
 ### Delivered
 - `js/core/scanner.js` + view `scanner` — 12 presetov, viacpárový sken so skóre.

@@ -31,6 +31,10 @@ Reálny obchod teda nie je technicky možný. Všetko obchodovanie je simulovan�
 
 ## 2. Spustenie
 
+**Windows – jedným kliknutím:** dvojklik na `SPUSTIT.bat`. Skript skontroluje Node.js,
+spustí server a po ~2 sekundách otvorí aplikáciu v predvolenom prehliadači. Iný port:
+`SPUSTIT.bat 8888`. Okno nechaj otvorené – zatvorením sa server ukončí.
+
 | Príkaz | Čo robí |
 |---|---|
 | `node tools/serve.mjs` | spustí statický server (predvolene `127.0.0.1:8787`); `--port`, `--host` |

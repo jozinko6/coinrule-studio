@@ -128,3 +128,10 @@ Verdict: PASS (3/3)
 2. `tools/verify.mjs` prepisoval sledovaný report a znečisťoval pracovný strom; report je
    teraz v `.gitignore` a odstránený z indexu (na disku zostáva ako lokálny artefakt).
 3. Verifier verdict: **VERIFIED** — 247/247 testov, 0 skipped, žiadne oslabené assercie.
+
+### One-click launcher (SPUSTIT.bat)
+- Skontroluje Node.js (inak návod + odkaz na nodejs.org), spustí `tools/serve.mjs`
+  a po ~2 s otvorí predvolený prehliadač; voliteľný port `SPUSTIT.bat 8888`.
+- Overené príkazmi: HTTP 200 na `/` aj `/js/core/scanner.js` cez bat, chýbajúci Node
+  → exit 1 s návodom, obsadený port → zrozumiteľná chyba a exit 1, oneskorené
+  otvorenie prehliadača s korektným portom.

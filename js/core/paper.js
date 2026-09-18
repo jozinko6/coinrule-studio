@@ -4,13 +4,29 @@
  * Models a real exchange closely enough to be useful, without ever touching a
  * real account: order types (market / limit / stop-market / stop-limit /
  * take-profit / trailing-stop), maker/taker fees, slippage, partial fills
- * limited by a participation rate, IOC/FOK/GTC time-in-force and OCO groups.
+ * limited by a SHARED participation budget, IOC/FOK/GTC time-in-force and OCO
+ * groups.
  *
  * Two execution modes:
  *   - `backtest`: market orders are queued and filled at the NEXT bar's open
  *     (no look-ahead bias).
  *   - `live`: market orders fill immediately at the last traded price
  *     (used by the real-time virtual trading screen).
+ *
+ * Bar sequence (backtest):
+ *   1. queued market orders fill at the open
+ *   2. the entry-fill hook arms protective orders at the REAL fill price
+ *   3. the intrabar range is processed according to `executionModel`
+ *   4. the bar closes and equity is marked
+ *
+ * Execution models (Phase 1.6):
+ *   - `conservative` (default): no intrabar path is assumed. Protective levels
+ *     seen anywhere in the bar may trigger and the stop wins ties; the trailing
+ *     stop only ever uses the PREVIOUS bar's high-water mark.
+ *   - `ohlc`: path O -> H -> L -> C. The high updates the trailing level before
+ *     the low is checked.
+ *   - `olhc`: path O -> L -> H -> C. The low is checked against the pre-bar
+ *     trailing level; the high only updates it afterwards.
  */
 
 import { Portfolio } from './portfolio.js';
@@ -25,6 +41,8 @@ export const ORDER_STATUS = {
   REJECTED: 'rejected',
   PENDING_OPEN: 'pending_open',
 };
+
+export const EXECUTION_MODELS = ['conservative', 'ohlc', 'olhc'];
 
 let orderSeq = 0;
 
@@ -68,6 +86,7 @@ export class PaperBroker {
     this.makerFeePct = opts.makerFeePct ?? 0.1;
     this.slippagePct = opts.slippagePct ?? 0.05;
     this.participationRate = opts.participationRate ?? 0.25;
+    this.executionModel = EXECUTION_MODELS.includes(opts.executionModel) ? opts.executionModel : 'conservative';
     this.portfolio = opts.portfolio ?? new Portfolio({
       cash: opts.startingCash ?? 10_000,
       feePct: opts.takerFeePct ?? 0.1,
@@ -81,6 +100,12 @@ export class PaperBroker {
     this.lastVolume = 0;
     this.events = [];
     this.rejections = [];
+    // Set by the strategy runtime: called right after a buy fill so protective
+    // orders (SL/TP/trailing) can be armed at the actual average fill price.
+    this.onEntryFilled = opts.onEntryFilled ?? null;
+    // Shared per-bar liquidity budget (base units) — every fill in the bar
+    // consumes from it. Infinity when there is no volume cap.
+    this.barLiquidityRemaining = Infinity;
     // Optional deterministic id generator (used by the backtester so that two
     // identical runs produce byte-identical output).
     this.idFactory = opts.idFactory ?? null;
@@ -105,6 +130,14 @@ export class PaperBroker {
 
   cash() { return this.portfolio.cash; }
 
+  setExecutionModel(model) {
+    if (!EXECUTION_MODELS.includes(model)) {
+      throw new Error(`Neznámy execution model: ${model} (povolené: ${EXECUTION_MODELS.join(', ')})`);
+    }
+    this.executionModel = model;
+    return this;
+  }
+
   log(type, message, extra = {}) {
     this.events.push({ type, message, time: this.lastTime, price: this.lastPrice, ...extra });
   }
@@ -123,11 +156,38 @@ export class PaperBroker {
     return roundCash((notional * pct) / 100);
   }
 
-  /** How much of an order can fill against a bar with `volume`. */
+  /** Largest quantity the current cash can pay for, fee included. */
+  affordableQty(price, { isMaker = false } = {}) {
+    if (!(price > 0)) return 0;
+    const feeRate = (isMaker ? this.makerFeePct : this.takerFeePct) / 100;
+    let qty = roundQty(this.portfolio.cash / (price * (1 + feeRate)));
+    for (let i = 0; i < 6 && qty > 0; i += 1) {
+      const notional = roundCash(qty * price);
+      const fee = this.feeFor(notional, { isMaker });
+      if (this.portfolio.cash + 1e-9 >= notional + fee) break;
+      const over = roundCash(notional + fee - this.portfolio.cash);
+      qty = roundQty(Math.max(0, qty - over / price - 1e-8));
+    }
+    return qty > 0 ? qty : 0;
+  }
+
+  /**
+   * How much of an order can fill against a bar with `volume`.
+   * The per-order cap is `volume * participationRate`; all executions in the
+   * same bar additionally share `barLiquidityRemaining`.
+   */
   fillCapacity(volume, order) {
     const rate = order.participationRate ?? this.participationRate;
-    if (!Number.isFinite(volume) || volume <= 0 || !(rate > 0)) return Infinity;
-    return volume * rate;
+    let cap = Infinity;
+    if (Number.isFinite(volume) && volume > 0 && rate > 0) cap = volume * rate;
+    if (Number.isFinite(this.barLiquidityRemaining)) cap = Math.min(cap, this.barLiquidityRemaining);
+    return cap;
+  }
+
+  consumeLiquidity(qty) {
+    if (Number.isFinite(this.barLiquidityRemaining)) {
+      this.barLiquidityRemaining = Math.max(0, this.barLiquidityRemaining - qty);
+    }
   }
 
   /** Execute a fill at `price`, honouring the portfolio ledger. */
@@ -148,33 +208,44 @@ export class PaperBroker {
     if (!(qty > 0)) return null;
 
     const execPrice = this.slippagePrice(price, order.side, { isMaker });
-    const notional = roundCash(qty * execPrice);
-    const fee = this.feeFor(notional, { isMaker });
+    if (!(execPrice > 0)) return null;
+    let notional = roundCash(qty * execPrice);
+    let fee = this.feeFor(notional, { isMaker });
+
+    if (order.side === 'buy' && this.portfolio.cash < notional + fee) {
+      // Not enough cash at the actual fill price: shrink to what is affordable
+      // and RECOMPUTE notional + fee from the final quantity.
+      qty = Math.min(qty, this.affordableQty(execPrice, { isMaker }));
+      if (!(qty > 0)) {
+        order.status = ORDER_STATUS.REJECTED;
+        this.rejections.push({ orderId: order.id, reason: 'insufficient_funds', time });
+        return null;
+      }
+      notional = roundCash(qty * execPrice);
+      fee = this.feeFor(notional, { isMaker });
+      if (this.portfolio.cash < notional + fee - 1e-9) {
+        order.status = ORDER_STATUS.REJECTED;
+        this.rejections.push({ orderId: order.id, reason: 'insufficient_funds', time });
+        return null;
+      }
+    }
 
     const prePos = order.side === 'sell' ? this.portfolio.position(order.symbol) : null;
+    let sellResult = null;
 
     if (order.side === 'buy') {
-      if (this.portfolio.cash < notional + fee) {
-        // Not enough cash: shrink to what is affordable (market reality) or reject.
-        const affordable = roundQty((this.portfolio.cash * (1 - this.takerFeePct / 100)) / execPrice);
-        if (!(affordable > 0)) {
-          order.status = ORDER_STATUS.REJECTED;
-          this.rejections.push({ orderId: order.id, reason: 'insufficient_funds', time });
-          return null;
-        }
-        qty = Math.min(qty, affordable);
-      }
       this.portfolio.applyBuy({ symbol: order.symbol, qty, price: execPrice, fee, time });
     } else {
-      const res = this.portfolio.applySell({ symbol: order.symbol, qty, price: execPrice, fee, time, reason: reason ?? order.reason });
-      if (!res.qty) {
+      sellResult = this.portfolio.applySell({ symbol: order.symbol, qty, price: execPrice, fee, time, reason: reason ?? order.reason });
+      if (!sellResult.qty) {
         order.status = ORDER_STATUS.REJECTED;
         this.rejections.push({ orderId: order.id, reason: 'no_position', time });
         return null;
       }
-      this.recordTrade(order, execPrice, res.qty, fee, time, reason ?? order.reason, prePos);
+      this.recordTrade(order, execPrice, sellResult, time, reason ?? order.reason, prePos);
     }
 
+    this.consumeLiquidity(qty);
     const filledNotional = roundCash(qty * execPrice);
     order.avgFillPrice = order.avgFillPrice
       ? roundCash((order.avgFillPrice * order.filledQty + filledNotional) / (order.filledQty + qty))
@@ -187,25 +258,50 @@ export class PaperBroker {
     this.log(order.side === 'buy' ? 'buy' : 'sell', `${order.side.toUpperCase()} ${roundQty(qty)} ${order.symbol} @ ${execPrice}`, {
       orderId: order.id, fee, reason: reason ?? order.reason,
     });
+
+    if (order.side === 'sell') this.syncOco(order, qty);
     if (order.status === ORDER_STATUS.FILLED) this.resolveOco(order);
+    if (order.side === 'buy' && this.onEntryFilled) {
+      try {
+        this.onEntryFilled(order, { qty, price: execPrice, time, fee });
+      } catch (err) {
+        this.log('warn', `Entry-fill hook zlyhal: ${err.message}`, { orderId: order.id });
+      }
+    }
     return { qty, price: execPrice, fee };
   }
 
-  recordTrade(order, exitPrice, qty, fee, time, reason, prePos = null) {
+  recordTrade(order, exitPrice, fill, time, reason, prePos = null) {
     // The position may already be gone (fully closed) — use the snapshot taken
     // before the sell so the entry price is always correct.
     const entryPrice = prePos?.entryPrice ?? this.portfolio.position(order.symbol)?.entryPrice ?? exitPrice;
     const openedAt = prePos?.openedAt ?? this.portfolio.position(order.symbol)?.openedAt ?? order.createdAt ?? time;
+    const qty = roundQty(fill.qty);
+    const grossPnl = roundCash((exitPrice - entryPrice) * qty);
+    const entryFee = roundCash(fill.entryFeeAlloc ?? 0);
+    const exitFee = roundCash(fill.exitFee ?? 0);
+    const totalFees = roundCash(entryFee + exitFee);
+    const netPnl = roundCash(grossPnl - totalFees);
+    const costBasis = roundCash(entryPrice * qty);
+    const netPnlPct = costBasis > 0 ? roundPct((netPnl / costBasis) * 100) : 0;
     this.trades.push({
       id: `trd_${this.trades.length + 1}`,
       symbol: order.symbol,
       side: 'long',
-      qty: roundQty(qty),
+      qty,
       entryPrice,
       exitPrice,
-      pnl: roundCash((exitPrice - entryPrice) * qty - fee),
-      pnlPct: roundPct(pctChange(entryPrice, exitPrice)),
-      fees: fee,
+      grossPnl,
+      entryFee,
+      exitFee,
+      totalFees,
+      netPnl,
+      netPnlPct,
+      // `pnl`/`pnlPct`/`fees` stay the net, fee-inclusive values so every
+      // existing analytics path keeps using the true economic result.
+      pnl: netPnl,
+      pnlPct: netPnlPct,
+      fees: totalFees,
       openedAt,
       closedAt: time,
       durationMs: time - openedAt,
@@ -214,6 +310,27 @@ export class PaperBroker {
       strategyId: order.strategyId,
       orderId: order.id,
     });
+  }
+
+  /**
+   * Keep OCO siblings quantity-synchronised: a partial fill on one leg reduces
+   * the remaining quantity of the others, and a fully consumed sibling is
+   * cancelled. Protective legs can therefore never sell more than the position.
+   */
+  syncOco(order, filledQty) {
+    if (!order.ocoGroup) return;
+    for (const other of this.orders.values()) {
+      if (other.id === order.id || other.ocoGroup !== order.ocoGroup) continue;
+      if (![ORDER_STATUS.NEW, ORDER_STATUS.PARTIAL, ORDER_STATUS.PENDING_OPEN].includes(other.status)) continue;
+      const remaining = roundQty(other.qty - other.filledQty - filledQty);
+      if (!(remaining > 1e-12)) {
+        other.status = ORDER_STATUS.CANCELED;
+        other.updatedAt = this.lastTime;
+        this.log('cancel', `OCO: zrušený ${other.type} #${other.id} (brat vyplnil celú pozíciu)`, { orderId: other.id });
+      } else {
+        other.qty = roundQty(other.filledQty + remaining);
+      }
+    }
   }
 
   resolveOco(order) {
@@ -244,7 +361,7 @@ export class PaperBroker {
     }
     const refPrice = order.price ?? this.lastPrice ?? 0;
     if (order.side === 'buy' && refPrice > 0 && order.qty * refPrice > this.portfolio.cash * 1.000001) {
-      const affordable = roundQty((this.portfolio.cash * (1 - this.takerFeePct / 100)) / refPrice);
+      const affordable = this.affordableQty(refPrice, { isMaker: order.type === 'limit' });
       if (!(affordable > 0)) {
         order.status = ORDER_STATUS.REJECTED;
         this.rejections.push({ orderId: order.id, reason: 'insufficient_funds', time: this.lastTime });
@@ -303,13 +420,71 @@ export class PaperBroker {
     if (time !== null) this.lastTime = time;
   }
 
+  /** Fill price for a stop: gap-through at the open, otherwise the level. */
+  stopFillPrice(trigger, side, { levelPreExisted = true, open }) {
+    if (side === 'sell') {
+      if (levelPreExisted && open <= trigger) return open;
+      return trigger;
+    }
+    if (levelPreExisted && open >= trigger) return open;
+    return trigger;
+  }
+
+  /** Fill price for a resting limit: you never do worse than the limit. */
+  limitFillPrice(trigger, side, open) {
+    return side === 'sell'
+      ? (open >= trigger ? open : trigger)
+      : (open <= trigger ? open : trigger);
+  }
+
+  /** Process protective orders for the current bar according to the model. */
+  processProtectives({ open, high, low, time, levelPreExisted }) {
+    const protective = this.openOrders
+      .filter((o) => ['stop_market', 'trailing_stop', 'take_profit'].includes(o.type));
+    const stops = protective.filter((o) => o.type !== 'take_profit');
+    const targets = protective.filter((o) => o.type === 'take_profit');
+    const ordered = this.executionModel === 'ohlc' ? [...targets, ...stops] : [...stops, ...targets];
+
+    for (const o of ordered) {
+      const pos = this.portfolio.position(o.symbol);
+      if (!pos && o.side === 'sell') {
+        o.status = ORDER_STATUS.CANCELED;
+        o.updatedAt = time;
+        continue;
+      }
+      let trigger = null;
+      if (o.type === 'trailing_stop') {
+        if (!pos?.trailingStopPct) continue;
+        trigger = pos.trailingStopPrice(pos.highWater);
+        o.stopPrice = trigger;
+      } else {
+        trigger = o.stopPrice;
+      }
+      if (!Number.isFinite(trigger)) continue;
+      // Direction matters: a take-profit sell sits ABOVE the market and needs the
+      // high to reach it; a stop/trailing sell sits BELOW and needs the low.
+      const isTarget = o.type === 'take_profit';
+      const touched = isTarget
+        ? (o.side === 'sell' ? high >= trigger : low <= trigger)
+        : (o.side === 'sell' ? low <= trigger : high >= trigger);
+      if (!touched) continue;
+      const fillPrice = isTarget
+        ? this.limitFillPrice(trigger, o.side, open)
+        : this.stopFillPrice(trigger, o.side, { levelPreExisted, open });
+      this.fillOrder(o, fillPrice, {
+        volume: this.lastVolume,
+        time,
+        reason: o.reason,
+      });
+    }
+  }
+
   /**
-   * Feed one candle. Handles, in a conservative order:
-   *   1. queued market orders -> fill at the bar open
-   *   2. stop-loss / trailing-stop triggers
-   *   3. take-profit triggers
-   *   4. resting limit orders
-   *   5. stop-entry orders (stop-market buy above / sell below)
+   * Feed one candle. Handles, in order:
+   *   1. queued market orders -> fill at the bar open (arms protective orders)
+   *   2. protective exits according to the intrabar execution model
+   *   3. resting limit orders
+   *   4. stop-entry orders
    */
   onCandle(candle) {
     const { open, high, low, close, volume, time } = candle;
@@ -318,21 +493,19 @@ export class PaperBroker {
     const before = this.lastPrice;
     this.lastPrice = open;
 
-    /** Fill price for a stop: gaps through the level fill at the open. */
-    const stopPrice = (trigger, side) => (side === 'sell'
-      ? (open <= trigger ? open : trigger)
-      : (open >= trigger ? open : trigger));
+    // Fresh shared liquidity budget for this bar.
+    const rate = this.participationRate;
+    this.barLiquidityRemaining = Number.isFinite(volume) && volume > 0 && rate > 0 ? volume * rate : Infinity;
 
-    /** Fill price for a resting limit: you never do worse than the limit. */
-    const limitPrice = (trigger, side) => (side === 'sell'
-      ? (open >= trigger ? open : trigger)
-      : (open <= trigger ? open : trigger));
+    // 1. market orders queued from the previous bar (keep filling the remainder)
+    for (const o of this.openOrders) {
+      if (o.type !== 'market') continue;
+      if (o.status !== ORDER_STATUS.PENDING_OPEN && o.status !== ORDER_STATUS.PARTIAL) continue;
+      if (o.reduceOnly && o.side === 'sell' && !this.portfolio.position(o.symbol)) continue;
+      this.fillOrder(o, open, { volume, time, reason: o.reason });
+    }
 
-    // 0. track the extremes of every open position
-    for (const pos of this.portfolio.openPositions) pos.updateWatermarks(high);
-    for (const pos of this.portfolio.openPositions) pos.updateWatermarks(low);
-
-    // 0b. reduce-only orders whose position is gone can never fill — cancel them
+    // reduce-only orders whose position is gone can never fill — cancel them
     for (const o of this.openOrders) {
       if (!o.reduceOnly) continue;
       if (o.side !== 'sell') continue;
@@ -342,31 +515,23 @@ export class PaperBroker {
       this.log('cancel', `Zrušený reduce-only príkaz #${o.id} (pozícia neexistuje)`, { orderId: o.id });
     }
 
-    // 1. market orders queued from the previous bar (keep filling the remainder)
-    for (const o of this.openOrders) {
-      if (o.type !== 'market') continue;
-      if (o.status !== ORDER_STATUS.PENDING_OPEN && o.status !== ORDER_STATUS.PARTIAL) continue;
-      this.fillOrder(o, open, { volume, time, reason: o.reason });
-    }
 
-    // 2. protective exits — stops first (conservative when both are touched)
-    const protective = this.openOrders
-      .filter((o) => ['stop_market', 'trailing_stop', 'take_profit'].includes(o.type))
-      .sort((a, b) => (a.type === 'take_profit' ? 1 : 0) - (b.type === 'take_profit' ? 1 : 0));
-    for (const o of protective) {
+    // 2. protective exits; the model decides whether the high may be used
+    //    before the low for trailing levels.
+    const levelPreExisted = this.executionModel !== 'ohlc';
+    if (this.executionModel === 'ohlc') {
+      for (const pos of this.portfolio.openPositions) pos.updateWatermarks(high);
+    }
+    this.processProtectives({ open, high, low, time, levelPreExisted });
+    for (const pos of this.portfolio.openPositions) {
+      pos.updateWatermarks(high);
+      pos.updateWatermarks(low);
+    }
+    // Refresh trailing levels for the NEXT bar from the updated watermarks.
+    for (const o of this.openOrders) {
+      if (o.type !== 'trailing_stop') continue;
       const pos = this.portfolio.position(o.symbol);
-      if (!pos && o.side === 'sell') { o.status = ORDER_STATUS.CANCELED; continue; }
-      let trigger = null;
-      if (o.type === 'stop_market' || o.type === 'take_profit') trigger = o.stopPrice;
-      if (o.type === 'trailing_stop') {
-        trigger = pos.trailingStopPrice(high);
-        o.stopPrice = trigger;
-      }
-      if (!Number.isFinite(trigger)) continue;
-      const hit = o.side === 'sell' ? low <= trigger : high >= trigger;
-      if (!hit) continue;
-      const fillPrice = o.type === 'take_profit' ? limitPrice(trigger, o.side) : stopPrice(trigger, o.side);
-      this.fillOrder(o, fillPrice, { volume, time, reason: o.reason });
+      if (pos?.trailingStopPct) o.stopPrice = pos.trailingStopPrice(pos.highWater);
     }
 
     // 3. resting limit orders (a stop-limit only rests once its stop triggered)
@@ -381,7 +546,7 @@ export class PaperBroker {
         o.updatedAt = time;
         continue;
       }
-      this.fillOrder(o, limitPrice(o.price, o.side), { volume, time, isMaker: true, reason: o.reason });
+      this.fillOrder(o, this.limitFillPrice(o.price, o.side, open), { volume, time, isMaker: true, reason: o.reason });
       if (o.timeInForce === 'IOC' && o.status === ORDER_STATUS.PARTIAL) o.status = ORDER_STATUS.CANCELED;
     }
 
@@ -394,7 +559,7 @@ export class PaperBroker {
       const hit = o.side === 'buy' ? high >= o.stopPrice : low <= o.stopPrice;
       if (!hit) continue;
       if (o.type === 'stop_market') {
-        this.fillOrder(o, stopPrice(o.stopPrice, o.side), { volume, time, reason: o.reason });
+        this.fillOrder(o, this.stopFillPrice(o.stopPrice, o.side, { levelPreExisted: true, open }), { volume, time, reason: o.reason });
       } else {
         o.type = 'limit';
         o.triggeredAt = time;
@@ -487,7 +652,7 @@ export class PaperBroker {
         if (!pos) break;
         pos.trailingStopPct = action.value;
         pos.highWater = Math.max(pos.highWater, price);
-        out.push(this.submit({ ...base, side: 'sell', type: 'trailing_stop', qty: pos.qty, trailingPct: action.value, stopPrice: pos.trailingStopPrice(price), reduceOnly: true, reason: 'trailing_stop' }));
+        out.push(this.submit({ ...base, side: 'sell', type: 'trailing_stop', qty: pos.qty, trailingPct: action.value, stopPrice: pos.trailingStopPrice(pos.highWater), reduceOnly: true, reason: 'trailing_stop' }));
         break;
       }
       case 'break_even': {
@@ -504,7 +669,9 @@ export class PaperBroker {
         break;
       }
       case 'set_leverage': {
-        this.leverage = action.value;
+        // Spot engine: leverage is NOT simulated. Record the request so the UI
+        // can show it, but never pretend margin exists.
+        this.log('warn', `set_leverage nie je v spot režime podporovaný (požiadavka ${action.value}x ignorovaná)`, { action });
         break;
       }
       case 'notify':

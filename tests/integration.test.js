@@ -57,7 +57,10 @@ test('a template can be instantiated, validated, backtested and persisted', () =
   for (const t of res.trades) {
     assert.ok(t.qty > 0);
     assert.ok(t.exitPrice > 0 && t.entryPrice > 0);
-    approx(t.pnlPct, ((t.exitPrice - t.entryPrice) / t.entryPrice) * 100, 1e-3);
+    // pnlPct is the NET return on the position cost basis, and pnl is net of both fee legs
+    approx(t.pnlPct, (t.netPnl / (t.entryPrice * t.qty)) * 100, 1e-3);
+    approx(t.pnl, t.grossPnl - t.totalFees, 1e-6);
+    approx(t.totalFees, t.entryFee + t.exitFee, 1e-9);
   }
 
   // persistence round-trip through the store

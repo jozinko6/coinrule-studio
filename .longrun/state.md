@@ -170,3 +170,69 @@ Verdict: PASS (3/3)
 - `TONUSDT` mal status `BREAK` (pozastavené) → nahradený `UNIUSDT` (TRADING, likvidný major).
 - Nový nástroj `tools/symbol-audit.mjs` (verejné endpointy, bez kľúčov) overí celú
   množinu; exit 0 = všetko TRADING. Spustené: „Všetkých 65 párov je TRADING.“
+
+---
+
+# Long-run upgrade — cycle 1 (2026-09-18)
+
+## Analysed (source, not README)
+Read in full: `js/core/paper.js`, `portfolio.js`, `engine.js`, `backtest.js`, `metrics.js`, `rules.js` catalogues,
+`js/store/store.js`, `tools/*`, and the whole test suite. Verified `node:sqlite` is available in Node v24
+(`DatabaseSync`, `StatementSync`) — so the DB can stay **zero-dependency**.
+
+## Found bugs (reproduced with failing tests first)
+1. **Protective timing** — SL/TP were only created at the bar close, so an entry filled at the open could
+   survive a bar whose low breached the stop. Fixed with an `onEntryFilled` broker hook that arms protection
+   at the real average fill price, before the intrabar range is processed.
+2. **Fee after downsizing** — `fillOrder` shrank qty on gap-up but kept the old notional/fee → cash could go
+   negative. Now notional+fee are recomputed from the final qty (`affordableQty` fixpoint).
+3. **Entry fees missing from trade PnL** — trades only subtracted the exit fee. Positions now carry
+   `entryFeeOpen`; every sell allocates a proportional slice. Trades expose
+   `grossPnl / entryFee / exitFee / totalFees / netPnl / netPnlPct`; `pnl` and `pnlPct` are the NET values,
+   so win/loss, profit factor, expectancy and win rate are all net.
+4. **Partial OCO** — a partial fill left the sibling at full size and both legs could fire. Added
+   `syncOco()` (quantity synchronisation + cancel when consumed) and `resolveOco()` on completion.
+5. **Shared liquidity** — participation applied per order. Added `barLiquidityRemaining`: every fill in one
+   bar consumes from `volume * participationRate`.
+6. **Intrabar model** — the trailing stop used the current bar's high and then triggered on the earlier low.
+   Added explicit models `conservative` (default) / `ohlc` / `olhc` with `setExecutionModel()` validation.
+7. **BONUS (found by the new tests): take-profit triggered unconditionally.** The old touch test used
+   `low <= trigger` for EVERY sell order, so a TP above the market filled on the next bar at the TP price.
+   Now targets need `high >= trigger`, stops need `low <= trigger`. This materially changes backtest results
+   (they were optimistic); all 128 templates still validate and backtest.
+8. **reduce-only cleanup ran before queued entries filled**, cancelling a same-bar entry's own protection.
+   Moved after the market-fill step.
+
+## Changed
+- `js/core/paper.js` (rewritten): execution models, entry-fill hook, shared budget, OCO sync, fee-correct fills.
+- `js/core/portfolio.js`: `entryFeeOpen` allocation, net realized PnL, richer `applySell` result.
+- `js/core/engine.js`: protection queued before actions, armed via broker hook, `applyProtection`/`handleEntryFill`.
+- `js/core/backtest.js`: `executionModel`, `makerFeePct`, `assumptions` block, net benchmark fee model.
+- `js/core/metrics.js`: `benchmarkFeePct` + `benchmarkNet` (net buy&hold), documented.
+
+## New tests
+- `tests/execution.test.js` — 12 tests: T1 same-bar protection (×2), T2 gap fee, T3 net fees (×2),
+  T4 partial OCO, T5 shared budget, T6 execution models (×4), model validation.
+- Updated 3 existing expectations to the corrected net semantics (portfolio realized PnL 9.79, net
+  `pnlPct` in integration, protection armed at fill in engine) — assertions were strengthened, not weakened.
+
+## Verification
+`node --test` (all files): **267 passed / 0 failed** (was 255). `node tools/verify.mjs` → see below.
+
+## Decisions
+- DB will use **`node:sqlite`** (built into Node ≥ 22.5, stable enough in v24) to preserve the zero-dependency,
+  no-install constraint. Windows-safe, no native build.
+- `conservative` execution model is the default; the model is stored with every backtest (`assumptions`).
+- Live trading architecture will be an `ExecutionBroker` interface with `PaperBroker`/`BinanceBroker`
+  implementations; `StrategyRuntime` stays broker-agnostic (same strategy logic in all modes).
+
+## Migration notes
+- Trade semantics changed: `trade.pnl` is now NET of entry+exit fees; new fields added and old ones kept.
+  Equity was always net (cash-based), so portfolio equity and trade statistics now agree.
+- Backtest metrics for existing saved records (localStorage) were produced under the old TP bug; they are
+  historical artefacts. A DB import will keep them but they should be re-run for accurate comparisons.
+
+## Next safe step
+Phase 3: `data/coinrule-studio.db` via `node:sqlite` with a forward-only migration runner and repositories
+(strategies, backtest runs/trades/equity, paper sessions, audit log), plus the idempotent localStorage →
+SQLite migration and tests (fresh DB, re-run idempotency, recovery).

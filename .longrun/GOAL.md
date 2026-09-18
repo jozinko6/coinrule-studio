@@ -55,3 +55,54 @@ dependencies" and the existing architecture already implements the full UI.
 - AC14 GitHub: https://github.com/jozinko6/coinrule-studio (public), commit 700662e pushed to main.
 
 Gate: `node tools/verify.mjs` → lint 55 files / 247 tests / 34 assets, verdict PASS.
+
+---
+
+# Long-run upgrade mission (user spec, 2026-09-18)
+
+Turn the prototype into a robust local trading platform with three separated
+modes: BACKTEST, PAPER TRADING, BINANCE ONLINE. Local-first Windows app,
+simple launch, local SQLite DB, real Binance OHLCV for paper mode, private
+Binance API via a local backend, TESTNET and separately unlocked LIVE modes,
+API secrets never in the frontend, append-only audit, kill switch + risk
+limits, all existing features/tests preserved.
+
+Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABILITY
+→ ONLINE TRADING → UX → new features.
+
+## Phase status (updated as work lands)
+| Phase | Status | Evidence |
+|-------|--------|----------|
+| 1 Engine correctness (6 issues) | **DONE** | tests/execution.test.js 12/12, full suite 267/267 |
+| 2 Binance kline WS + reconnect/stale | pending | — |
+| 3 SQLite DB + migrations | pending | — |
+| 4 History UI | pending | — |
+| 5 localStorage → SQLite migration | pending | — |
+| 6 Local backend (127.0.0.1 only) | pending | — |
+| 7 BinancePrivate (signed API) | pending | — |
+| 8 Trading modes state machine | pending | — |
+| 9 Exchange filters | pending | — |
+| 10 Live risk engine + kill switch | pending | — |
+| 11 Idempotency | pending | — |
+| 12 Reconciliation | pending | — |
+| 13 User data stream | pending | — |
+| 14 ExecutionBroker interface | pending | — |
+| 15 Action handler completeness | pending | — |
+| 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
+| 17 Multi-strategy accounting | pending | — |
+| 18 Append-only DB write model | pending | — |
+| 19 Settings UI (Binance) | pending | — |
+| 20 Dashboard modes | pending | — |
+| 21 Windows launcher + /api/health | pending | — |
+| 22 Clean shutdown | pending | — |
+| 23 Tests (full list) | in progress | 12 new engine tests, more per phase |
+| 24 Binance mock server | pending | — |
+| 25 Testnet opt-in integration | pending | — |
+| 26 CI | pending | — |
+
+## Non-negotiables carried forward
+- No API keys/secrets in localStorage, frontend state, logs, URLs, exports or git.
+- Default mode after start: PAPER/OFFLINE. Never auto-enable live trading.
+- Backend binds 127.0.0.1 by default; CORS restricted to the local frontend.
+- No withdrawal endpoints, ever (hard block).
+- Never weaken or delete a test.

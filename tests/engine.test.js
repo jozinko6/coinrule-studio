@@ -138,8 +138,8 @@ test('maxPositionPct caps the notional that can be bought', () => {
 test('protective actions are queued and attached after the fill', () => {
   const strategy = baseStrategy([mkRule([
     { type: 'buy', sizeMode: 'percent_cash', value: 50 },
-    { type: 'stop_loss', value: 5 },
-    { type: 'take_profit', value: 10 },
+    { type: 'stop_loss', value: 25 },
+    { type: 'take_profit', value: 500 },
   ])]);
   const { broker, rt } = mkRuntime([strategy]);
   broker.onCandle(candles[0]);
@@ -147,10 +147,14 @@ test('protective actions are queued and attached after the fill', () => {
   assert.equal(broker.portfolio.position('BTCUSDT'), null, 'entry must not fill in the signal bar');
   assert.ok(rt.pendingProtection.has('BTCUSDT'), 'protection should be queued');
   broker.onCandle(candles[1]);
-  rt.onBar(candles, 1);
+  const pos = broker.portfolio.position('BTCUSDT');
+  assert.ok(pos, 'the entry must fill at the next bar open');
+  assert.equal(pos.protectionApplied, true, 'protection must be armed at the real fill price');
   assert.equal(rt.pendingProtection.has('BTCUSDT'), false, 'protection should have been flushed');
   const protective = [...broker.orders.values()].filter((o) => ['stop_market', 'take_profit'].includes(o.type));
   assert.equal(protective.length, 2);
+  rt.onBar(candles, 1);
+  assert.equal(rt.pendingProtection.has('BTCUSDT'), false, 'an already protected position must not be re-queued');
 });
 
 test('protective exits stay attributable to the rule that opened the trade', () => {

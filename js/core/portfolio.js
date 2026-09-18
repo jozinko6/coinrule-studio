@@ -15,6 +15,9 @@ export class Position {
     this.openedAt = time;
     this.realizedPnl = 0;
     this.feesPaid = 0;
+    // Entry fees attributable to the currently OPEN quantity. Every sell
+    // allocates a proportional slice so trade PnL is net of entry costs.
+    this.entryFeeOpen = 0;
     this.stopLoss = null;      // absolute price
     this.takeProfit = null;    // absolute price
     this.trailingStopPct = 0;  // percent distance from the high-water mark
@@ -146,34 +149,46 @@ export class Portfolio {
       pos.entryPrice = roundCash((pos.entryPrice * pos.qty + price * q) / newQty);
       pos.qty = newQty;
       pos.feesPaid = roundCash(pos.feesPaid + fee);
+      pos.entryFeeOpen = roundCash((pos.entryFeeOpen ?? 0) + fee);
       pos.updateWatermarks(price);
     } else {
       pos = new Position({ symbol, qty: q, entryPrice: price, time });
       pos.feesPaid = roundCash(fee);
+      pos.entryFeeOpen = roundCash(fee);
       this.positions.set(symbol, pos);
     }
     this.record({ type: 'buy', symbol, qty: q, price, fee, time, cash: this.cash });
     return pos;
   }
 
-  /** Sell `qty` at `price`; charges `fee`. Returns realized PnL of the fill. */
+  /**
+   * Sell `qty` at `price`; charges `fee` and allocates the proportional slice
+   * of the open entry fees to this fill.
+   * @returns {{realized:number, realizedGross:number, entryFeeAlloc:number, exitFee:number, closed:boolean, qty:number}}
+   */
   applySell({ symbol, qty, price, fee, time = 0, reason = 'signal' }) {
     const pos = this.positions.get(symbol);
-    if (!pos) return { realized: 0, closed: false, qty: 0 };
+    if (!pos) return { realized: 0, realizedGross: 0, entryFeeAlloc: 0, exitFee: 0, closed: false, qty: 0 };
     const q = roundQty(Math.min(qty, pos.qty));
-    if (!(q > 0)) return { realized: 0, closed: false, qty: 0 };
+    if (!(q > 0)) return { realized: 0, realizedGross: 0, entryFeeAlloc: 0, exitFee: 0, closed: false, qty: 0 };
+
+    const qtyBefore = pos.qty;
+    const entryFeeAlloc = roundCash((pos.entryFeeOpen ?? 0) * (q / qtyBefore));
     const proceeds = roundCash(q * price);
-    const realized = roundCash((price - pos.entryPrice) * q);
+    const realizedGross = roundCash((price - pos.entryPrice) * q);
+    const realized = roundCash(realizedGross - entryFeeAlloc - fee);
+
     this.cash = roundCash(this.cash + proceeds - fee);
     this.feesPaid = roundCash(this.feesPaid + fee);
     this.realizedPnl = roundCash(this.realizedPnl + realized);
-    pos.qty = roundQty(pos.qty - q);
+    pos.qty = roundQty(qtyBefore - q);
+    pos.entryFeeOpen = roundCash(Math.max(0, (pos.entryFeeOpen ?? 0) - entryFeeAlloc));
     pos.realizedPnl = roundCash(pos.realizedPnl + realized);
     pos.feesPaid = roundCash(pos.feesPaid + fee);
     const closed = pos.qty <= 1e-12;
     if (closed) this.positions.delete(symbol);
     this.record({ type: 'sell', symbol, qty: q, price, fee, time, realized, reason, cash: this.cash });
-    return { realized, closed, qty: q };
+    return { realized, realizedGross, entryFeeAlloc, exitFee: fee, closed, qty: q };
   }
 
   record(entry) {

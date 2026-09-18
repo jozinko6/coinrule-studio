@@ -53,6 +53,10 @@ export class StrategyRuntime {
     });
     this.blockedUntilNextDay = false;
     this.killed = false;
+    // Protective orders must be armed the moment an entry actually fills (at the
+    // real average fill price), not at the bar close: otherwise a bar whose low
+    // breaches the stop before the close would be survived by the strategy.
+    if (this.broker) this.broker.onEntryFilled = (order, fill) => this.handleEntryFill(order, fill);
   }
 
   /* --------------------------------------------------------------- prepare */
@@ -182,20 +186,22 @@ export class StrategyRuntime {
           actions: [],
         };
         const protectives = (rule.then ?? []).filter((a) => PROTECTIVE_ACTIONS.has(a.type));
+        const alreadyProtected = this.broker.portfolio.position(strategy.symbol)?.protectionApplied;
+        if (protectives.length && !alreadyProtected) {
+          // Queue BEFORE the entry action so the fill hook can arm the protection
+          // at the real fill price (live fills immediately, backtest next open).
+          this.pendingProtection.set(strategy.symbol, {
+            actions: protectives,
+            ruleId: rule.id,
+            strategyId: strategy.id,
+          });
+        }
         for (const action of rule.then ?? []) {
           if (PROTECTIVE_ACTIONS.has(action.type)) continue;
           const outcome = this.runAction(strategy, rule, action, ctx);
           if (outcome) signal.actions.push(outcome);
           if (action.type === 'pause') this.strategyPaused.add(strategy.id);
           if (action.type === 'resume') this.strategyPaused.delete(strategy.id);
-        }
-        const alreadyProtected = this.broker.portfolio.position(strategy.symbol)?.protectionApplied;
-        if (protectives.length && !alreadyProtected) {
-          this.pendingProtection.set(strategy.symbol, {
-            actions: protectives,
-            ruleId: rule.id,
-            strategyId: strategy.id,
-          });
         }
         this.flushProtection(strategy.symbol, ctx);
         this.signals.push(signal);
@@ -207,14 +213,12 @@ export class StrategyRuntime {
   }
 
   /**
-   * Apply queued protective orders (stop-loss / take-profit / trailing) once the
-   * entry order has actually been filled. In backtest mode the entry fills at the
-   * NEXT bar's open, so this is normally called at the start of the following bar.
+   * Create the protective orders for a pending protection spec at the given
+   * price. Called from the broker's entry-fill hook `handleEntryFill` (real fill
+   * price) and, as a fallback, from `flushProtection` at the bar close.
    */
-  flushProtection(symbol, ctx) {
-    const pending = this.pendingProtection.get(symbol);
-    if (!pending) return false;
-    const actions = Array.isArray(pending) ? pending : pending.actions;
+  applyProtection(pending, symbol, price, time) {
+    const actions = Array.isArray(pending) ? pending : pending?.actions;
     if (!actions?.length) return false;
     const pos = this.broker.portfolio.position(symbol);
     if (!pos) return false;
@@ -223,18 +227,36 @@ export class StrategyRuntime {
     for (const action of actions) {
       this.broker.executeAction(action, {
         symbol,
-        price: ctx.price,
-        time: ctx.candles[ctx.index].time,
+        price,
+        time,
         // Keep the originating rule so protective exits stay attributable in
         // the trade log (analytics, per-rule stats).
-        ruleId: pending.ruleId ?? ctx.ruleId ?? null,
-        strategyId: pending.strategyId ?? ctx.strategyId ?? null,
+        ruleId: pending.ruleId ?? null,
+        strategyId: pending.strategyId ?? null,
         reason: action.type,
       });
     }
     pos.protectionApplied = true;
     this.pendingProtection.delete(symbol);
     return true;
+  }
+
+  /** Broker hook: an entry filled, arm its protection immediately. */
+  handleEntryFill(order, fill) {
+    if (!order || order.side !== 'buy') return;
+    const pending = this.pendingProtection.get(order.symbol);
+    if (!pending) return;
+    this.applyProtection(pending, order.symbol, fill.price, fill.time);
+  }
+
+  /**
+   * Fallback for cases where the fill hook did not fire (e.g. the position
+   * already existed, or a live fill happened before the rule was evaluated).
+   */
+  flushProtection(symbol, ctx) {
+    const pending = this.pendingProtection.get(symbol);
+    if (!pending) return false;
+    return this.applyProtection(pending, symbol, ctx.price, ctx.candles[ctx.index].time);
   }
 
   /** Risk-checked action execution. */

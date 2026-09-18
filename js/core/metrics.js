@@ -134,7 +134,7 @@ export function monthlyReturns(equityCurve) {
  * @param {number} args.timeframeMs
  * @param {Array<{time:number,price:number}>} [args.benchmark] buy&hold curve
  */
-export function computeMetrics({ equityCurve, trades = [], startingCash = 10_000, timeframeMs = 3_600_000, benchmark = null, feesPaid = 0, exposureSamples = [] }) {
+export function computeMetrics({ equityCurve, trades = [], startingCash = 10_000, timeframeMs = 3_600_000, benchmark = null, benchmarkFeePct = null, feesPaid = 0, exposureSamples = [] }) {
   if (!equityCurve.length) {
     return { empty: true, trades: 0 };
   }
@@ -159,7 +159,18 @@ export function computeMetrics({ equityCurve, trades = [], startingCash = 10_000
   let benchmarkReturnPct = null;
   let alphaPct = null;
   if (benchmark && benchmark.length > 1) {
-    benchmarkReturnPct = roundPct(pctChange(benchmark[0].price, benchmark[benchmark.length - 1].price));
+    const firstPx = benchmark[0].price;
+    const lastPx = benchmark[benchmark.length - 1].price;
+    if (benchmarkFeePct === null || benchmarkFeePct === undefined) {
+      // Gross buy&hold: explicitly reported as such in the UI.
+      benchmarkReturnPct = roundPct(pctChange(firstPx, lastPx));
+    } else {
+      // Net buy&hold: pay the taker fee on the way in and on the way out.
+      const f = benchmarkFeePct / 100;
+      const cost = firstPx * (1 + f);
+      const proceeds = lastPx * (1 - f);
+      benchmarkReturnPct = cost > 0 ? roundPct(((proceeds - cost) / cost) * 100) : 0;
+    }
     alphaPct = roundPct(totalReturnPct - benchmarkReturnPct);
   }
 
@@ -188,6 +199,8 @@ export function computeMetrics({ equityCurve, trades = [], startingCash = 10_000
     exposurePct,
     feesPaid: roundCash(feesPaid),
     benchmarkReturnPct,
+    benchmarkFeePct,
+    benchmarkNet: benchmarkFeePct !== null && benchmarkFeePct !== undefined,
     alphaPct,
     monthly: monthlyReturns(equityCurve),
     ...tStats,

@@ -28,9 +28,13 @@ test('selling realizes PnL and closes the position', () => {
   p.applyBuy({ symbol: 'BTCUSDT', qty: 1, price: 100, fee: 0.1 });
   const res = p.applySell({ symbol: 'BTCUSDT', qty: 1, price: 110, fee: 0.11 });
   assert.equal(res.closed, true);
-  approx(res.realized, 10);
+  // Trade PnL is NET: gross 10 minus the allocated entry fee (0.10) and the exit fee (0.11)
+  approx(res.realizedGross, 10);
+  approx(res.entryFeeAlloc, 0.1);
+  approx(res.exitFee, 0.11);
+  approx(res.realized, 9.79);
   approx(p.cash, 10_000 - 100 - 0.1 + 110 - 0.11);
-  approx(p.realizedPnl, 10);
+  approx(p.realizedPnl, 9.79);
   assert.equal(p.position('BTCUSDT'), null);
 });
 

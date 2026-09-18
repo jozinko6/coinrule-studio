@@ -10,7 +10,6 @@
  * pair; an unknown symbol simply fails to load and the UI falls back to the
  * deterministic simulator, so the app keeps working. Run `node tools/symbol-audit.mjs`
  * to re-check the whole universe against Binance exchangeInfo (network tool).
- * deterministic simulator, so the app keeps working.
  */
 
 export const MAJOR_SYMBOLS = [

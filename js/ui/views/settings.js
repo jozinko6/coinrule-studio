@@ -6,7 +6,171 @@ import { POPULAR_SYMBOLS, SOURCE } from '../../data/market.js';
 import { TIMEFRAMES } from '../../core/rules.js';
 import { STRATEGY_COUNT } from '../../core/strategies.js';
 import { INDICATOR_REGISTRY } from '../../core/indicators.js';
+import { DEFAULT_BACKEND_URL, createBackendClient, defaultBackendUrl } from '../../data/backend.js';
 
+/* ------------------------------------------------------- local backend panel */
+
+let backend = null;
+let backendPanel = null;
+const backendInfo = {
+  url: defaultBackendUrl(),
+  token: '',
+  status: null,
+  risk: null,
+  stream: null,
+  sessions: [],
+  error: null,
+  note: '',
+};
+
+async function backendAction(fn, note = '') {
+  backendInfo.error = null;
+  backendInfo.note = note;
+  try {
+    await fn();
+  } catch (err) {
+    backendInfo.error = err?.message ?? String(err);
+  }
+  rerenderBackendPanel();
+}
+
+function rerenderBackendPanel() {
+  if (!backendPanel || !backendPanel.isConnected) return;
+  const next = renderBackendPanel();
+  backendPanel.replaceWith(next);
+}
+
+async function connectBackend() {
+  backend = createBackendClient({ baseUrl: backendInfo.url, token: backendInfo.token });
+  await backendAction(async () => {
+    await backend.health();
+    await refreshBackendState();
+    backendInfo.note = 'Pripojené.';
+  });
+}
+
+async function refreshBackendState() {
+  if (!backend) return;
+  backendInfo.status = await backend.status();
+  backendInfo.risk = await backend.risk();
+  backendInfo.sessions = (await backend.sessions()).sessions ?? [];
+  try { backendInfo.stream = (await backend.streamStatus()).stream; } catch { backendInfo.stream = null; }
+}
+
+function renderBackendPanel() {
+  const card = h('div', { class: 'card' });
+
+  card.append(h('div', { class: 'card-head' },
+    h('h3', null, 'Lokálny backend (TESTNET / LIVE)'),
+    backendInfo.status
+      ? pill('backend: ' + backendInfo.status.mode.mode, backendInfo.status.mode.mode === 'live' ? 'warn' : 'ok')
+      : pill('nepripojené', 'warn')));
+
+  card.append(h('p', { class: 'muted small' },
+    'Backend beží na 127.0.0.1 a drží kľúče len v pamäti. Admin token nájdeš v konzole, kde si spustil SPUSTIT.bat. '
+    + 'Token ani kľúče sa neukladajú do prehliadača.'));
+
+  const urlInput = h('input', { type: 'text', value: backendInfo.url, placeholder: DEFAULT_BACKEND_URL });
+  const tokenInput = h('input', { type: 'password', value: backendInfo.token, placeholder: 'admin token z konzoly' });
+  card.append(h('div', { class: 'grid cols-3' },
+    h('label', { class: 'field' }, h('span', null, 'Adresa backendu'), urlInput),
+    h('label', { class: 'field' }, h('span', null, 'Admin token'), tokenInput),
+    h('label', { class: 'field' }, h('span', null, ' '),
+      h('div', { class: 'split' },
+        h('button', {
+          class: 'btn primary', type: 'button',
+          onclick: () => {
+            backendInfo.url = urlInput.value.trim() || DEFAULT_BACKEND_URL;
+            backendInfo.token = tokenInput.value;
+            void connectBackend();
+          },
+        }, 'Pripojiť'),
+        h('button', {
+          class: 'btn', type: 'button',
+          onclick: () => {
+            backend = null; backendInfo.status = null; backendInfo.risk = null;
+            backendInfo.sessions = []; backendInfo.stream = null; backendInfo.error = null;
+            rerenderBackendPanel();
+          },
+        }, 'Odpojiť')))));
+
+  if (backendInfo.error) card.append(h('p', { class: 'neg' }, backendInfo.error));
+  if (backendInfo.note && !backendInfo.error) card.append(h('p', { class: 'muted small' }, backendInfo.note));
+
+  if (backendInfo.status) {
+    const status = backendInfo.status;
+    card.append(h('div', { class: 'grid cols-4' },
+      h('div', { class: 'stat' }, h('div', { class: 'label' }, 'Mód'), h('div', { class: 'value' }, status.mode.mode)),
+      h('div', { class: 'stat' }, h('div', { class: 'label' }, 'Live'), h('div', { class: 'value' }, status.mode.liveEnabled ? 'ON' : 'off')),
+      h('div', { class: 'stat' }, h('div', { class: 'label' }, 'Databáza'), h('div', { class: 'value' }, status.db?.ok ? 'ok' : 'chyba')),
+      h('div', { class: 'stat' }, h('div', { class: 'label' }, 'Kľúče'), h('div', { class: 'value' }, status.credentials?.configured ? status.credentials.keyMasked : '—'))));
+
+    const risk = backendInfo.risk;
+    card.append(h('div', { class: 'split', style: { marginTop: '.6rem' } },
+      pill(risk?.killSwitchEngaged ? 'kill switch ZAPNUTÝ' : 'kill switch vypnutý', risk?.killSwitchEngaged ? 'warn' : 'ok'),
+      h('button', {
+        class: 'btn small', type: 'button',
+        onclick: () => { void backendAction(async () => { await backend.setKillSwitch(!risk?.killSwitchEngaged); await refreshBackendState(); }); },
+      }, risk?.killSwitchEngaged ? 'Vypnúť kill switch' : 'Zapnúť kill switch')));
+
+    const modeBtn = (action, label, cls = 'btn small') => h('button', {
+      class: cls, type: 'button',
+      onclick: () => {
+        if (action === 'live') {
+          void (async () => {
+            const yes = await confirmDialog('Zapnúť LIVE? Príkazy pôjdu na burzu s reálnymi peniazmi. Najprv otestuj TESTNET.', { danger: true, confirmLabel: 'Zapnúť LIVE' });
+            if (!yes) return;
+            void backendAction(async () => { await backend.setMode('live', { confirm: 'LIVE', acknowledgeRisk: true }); await refreshBackendState(); });
+          })();
+          return;
+        }
+        void backendAction(async () => { await backend.setMode(action); await refreshBackendState(); });
+      },
+    }, label);
+
+    card.append(h('div', { class: 'split', style: { marginTop: '.5rem' } },
+      modeBtn('paper', 'PAPER'), modeBtn('offline', 'OFFLINE'), modeBtn('testnet', 'TESTNET'),
+      modeBtn('live', 'LIVE', 'btn small danger'), modeBtn('disable', 'Vypnúť live/testnet')));
+
+    const keyInput = h('input', { type: 'password', placeholder: 'API key' });
+    const secretInput = h('input', { type: 'password', placeholder: 'API secret' });
+    card.append(h('div', { class: 'grid cols-3', style: { marginTop: '.6rem' } },
+      h('label', { class: 'field' }, h('span', null, 'Binance key'), keyInput),
+      h('label', { class: 'field' }, h('span', null, 'Binance secret'), secretInput),
+      h('label', { class: 'field' }, h('span', null, ' '),
+        h('div', { class: 'split' },
+          h('button', {
+            class: 'btn small', type: 'button',
+            onclick: () => { void backendAction(async () => {
+              await backend.saveCredentials(keyInput.value, secretInput.value);
+              keyInput.value = ''; secretInput.value = '';
+              await refreshBackendState();
+            }, 'Kľúče uložené v pamäti backendu.'); },
+          }, 'Uložiť kľúče'),
+          h('button', { class: 'btn small', type: 'button', onclick: () => { void backendAction(async () => { await backend.clearCredentials(); await refreshBackendState(); }); } }, 'Vymazať kľúče')))));
+
+    const sessionSelect = h('select', null);
+    for (const session of backendInfo.sessions) {
+      const o = h('option', { value: session.id }, session.environment + ' · ' + (session.symbol ?? '—') + ' · ' + session.reconciliation_state);
+      if (backendInfo.stream?.sessionId === session.id) o.selected = true;
+      sessionSelect.append(o);
+    }
+    card.append(h('div', { class: 'grid cols-3', style: { marginTop: '.6rem' } },
+      h('label', { class: 'field' }, h('span', null, 'Live session'), sessionSelect),
+      h('label', { class: 'field' }, h('span', null, ' '),
+        h('div', { class: 'split' },
+          h('button', { class: 'btn small', type: 'button', onclick: () => { void backendAction(async () => { await backend.createSession(status.mode.mode === 'live' ? 'live' : 'testnet', null); await refreshBackendState(); }); } }, 'Nová session'),
+          h('button', { class: 'btn small', type: 'button', onclick: () => { void backendAction(async () => { await backend.reconcile(sessionSelect.value); await refreshBackendState(); }); } }, 'Reconciliation'))),
+      h('label', { class: 'field' }, h('span', null, 'Stream'),
+        h('div', { class: 'split' },
+          h('button', { class: 'btn small', type: 'button', onclick: () => { void backendAction(async () => { await backend.streamStart(sessionSelect.value); await refreshBackendState(); }); } }, 'Štart'),
+          h('button', { class: 'btn small', type: 'button', onclick: () => { void backendAction(async () => { await backend.streamStop(); await refreshBackendState(); }); } }, 'Stop'),
+          h('span', { class: 'muted small' }, backendInfo.stream?.running ? ('beží (' + (backendInfo.stream.ticks ?? 0) + ' tickov)') : 'stopped')))));
+  }
+
+  backendPanel = card;
+  return card;
+}
 export function render() {
   const wrap = h('div');
   const s = store.settings;
@@ -15,6 +179,8 @@ export function render() {
     h('div', null,
       h('h2', null, 'Nastavenia'),
       h('p', { class: 'muted small' }, 'Všetko sa ukladá lokálne v prehliadači (localStorage). Nič sa neposiela na server.'))));
+
+  wrap.append(renderBackendPanel());
 
   /* ------------------------------------------------------------ data source */
   const sourceSelect = h('select', { onchange: (e) => { setSource(e.target.value).then(() => emit()); } });
@@ -154,9 +320,9 @@ export function render() {
       ['Šablóny stratégií', `${STRATEGY_COUNT} v 12 rodinách`],
       ['Indikátory', `${INDICATOR_REGISTRY.length}`],
       ['Zdroj trhových dát', 'Verejné API/WS Binance alebo deterministický simulátor'],
-      ['Obchodovanie', 'Výhradne virtuálne (paper) — žiadne reálne príkazy'],
+      ['Obchodovanie', 'Virtuálne (paper) lokálne; TESTNET/LIVE iba cez lokálny backend s kľúčmi v RAM'],
       ['Závislosti', 'Žiadne — čistý JavaScript (ES moduly), bez CDN a balíkov'],
-      ['Ukladanie', 'localStorage + JSON export/import'],
+      ['Ukladanie', 'localStorage + JSON export/import; kľúče a admin token sa neukladajú nikdy'],
       ['Backtest engine', 'Event-driven, bez look-ahead (signál na close, plnenie na ďalšom open)'],
       ['Poplatky', `${s.feePct} % taker aj maker (štandard Binance spot)`],
     ])));

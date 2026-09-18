@@ -5,9 +5,25 @@ import { drawCandles, drawEquity } from '../charts.js';
 import { state, store, navigate, loadCandles } from '../state.js';
 import { sma, ema, rsi, atr, last } from '../../core/indicators.js';
 import { STRATEGY_COUNT } from '../../core/strategies.js';
+import { createBackendClient, defaultBackendUrl } from '../../data/backend.js';
 
 let chartCanvas = null;
 let equityCanvas = null;
+let backendBadge = null;
+
+/** Non-blocking badge: the page must work fine when no backend is running. */
+async function refreshBackendBadge() {
+  if (!backendBadge) return;
+  try {
+    const client = createBackendClient({ baseUrl: defaultBackendUrl() });
+    const health = await client.health();
+    backendBadge.textContent = 'backend: ' + health.mode + (health.db?.ok ? '' : ' (db chyba)');
+    backendBadge.className = 'pill ' + (health.db?.ok ? 'pill-ok' : 'pill-warn');
+  } catch {
+    backendBadge.textContent = 'backend: offline';
+    backendBadge.className = 'pill pill-warn';
+  }
+}
 
 export function render() {
   const wrap = h('div');
@@ -19,6 +35,7 @@ export function render() {
       h('h2', null, 'Prehľad'),
       h('p', { class: 'muted small' }, `Trh ${state.symbol} · ${state.timeframe} · ${candles.length} sviečok`)),
     h('div', { class: 'actions' },
+      (() => { backendBadge = h('span', { class: 'pill' }, 'backend: …'); return backendBadge; })(),
       h('button', { class: 'btn', type: 'button', onclick: () => loadCandles({ forceSource: 'binance' }) }, 'Binance online'),
       h('button', { class: 'btn', type: 'button', onclick: () => loadCandles({ forceSource: 'synthetic' }) }, 'Simulované dáta'),
       h('button', { class: 'btn primary', type: 'button', onclick: () => loadCandles() }, 'Obnoviť'))));
@@ -107,6 +124,7 @@ export function render() {
 }
 
 export function afterMount() {
+  void refreshBackendBadge();
   if (chartCanvas && state.candles.length) {
     const closes = state.candles.map((c) => c.close);
     drawCandles(chartCanvas, {

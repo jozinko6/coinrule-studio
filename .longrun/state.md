@@ -576,3 +576,34 @@ Full gate: lint 92 files 0 warnings, 378/378 tests, smoke 35 assets — PASS (3/
 Phases 4 (History UI), 17 (multi-strategy accounting), 19 (Settings UI), 20 (Dashboard modes),
 25 (testnet opt-in UI/docs). Real-exchange round trip not possible here (no credentials); CI blocked
 by the GitHub billing lock. Phase 23 continues until the UI phases land.
+
+
+# Long-run upgrade — cycle 14 (2026-09-18): Settings + Dashboard wiring (Phases 19/20)
+
+## Delivered
+- `js/data/backend.js` — UI client for the local backend: `normalizeBaseUrl`, `defaultBackendUrl`
+  (same-origin when served by the backend, 8787 otherwise), typed BackendError (status/code/check),
+  AbortController timeout, and one method per API route. The admin token lives in the closure only;
+  credentials are passed straight to the backend and never stored or re-rendered.
+- `js/ui/views/settings.js` — "Lokálny backend (TESTNET / LIVE)" card: connect (URL + password-type
+  token), status tiles (mode/live/db/keys-masked), kill-switch toggle, PAPER/OFFLINE/TESTNET/LIVE
+  buttons (LIVE behind a danger dialog + the API's typed confirm), write-only credential form,
+  session creation + reconciliation, stream start/stop, inline errors via toast. About card updated
+  to describe the optional backend honestly.
+- `js/ui/views/dashboard.js` — backend badge in the header (mode + db status, "backend: offline"
+  fallback); no hard dependency on the backend.
+- Tests `tests/backend-client.test.js` 8/8 (URL normalisation incl. scheme rejection, token scoping
+  to protected routes only, error/check mapping, offline + timeout paths, payload shapes, configure(),
+  same-origin default).
+
+## Runtime evidence (headless Chrome against the real backend on :8899)
+- #/dashboard renders "backend: paper" with pill-ok — the real page fetched the real backend
+  (same-origin default picked the :8899 origin automatically);
+- #/settings renders the backend panel with no "Chyba zobrazenia" and no boot failure.
+
+## Verification
+Full gate: lint 94 files 0 warnings, 386/386 tests, smoke 36 assets — PASS (3/3).
+
+## Remaining (honest scope)
+Phase 4 (History UI over the DB), Phase 17 (multi-strategy accounting); a real TESTNET round trip
+still needs credentials; CI stays blocked by the GitHub billing lock.

@@ -89,16 +89,16 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 14 ExecutionBroker interface | **DONE (core)** | server/services/execution-broker.mjs: mode -> reconciliation -> risk -> filters -> idempotency, cancels allowed under kill switch, tests 8/8 |
 | 15 Action handler completeness | **DONE (core)** | server/app.mjs API: token auth, /api/{status,mode,risk,credentials,sessions,orders,cancel,reconcile}; server/services/trading-context.mjs; tests/api.test.js 5/5 end-to-end |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
-| 23 Tests (full list) | in progress | 378 tests; verifier residuals fixed (+1 validation test, wider redaction) |
+| 23 Tests (full list) | in progress | 386 tests; +8 backend client, browser-verified Settings panel + Dashboard badge |
 | 17 Multi-strategy accounting | pending | — |
 | 18 Append-only DB write model | **DONE (core)** | migration 3 live_order_events + DB triggers aborting UPDATE/DELETE; every order write appends a redacted event; tests/live-events.test.js 4/4 (schema v3) |
-| 19 Settings UI (Binance) | pending | — |
-| 20 Dashboard modes | pending | — |
+| 19 Settings UI (Binance) | **DONE (core)** | settings backend panel: connect (url+token in RAM), credentials write-only, mode buttons (typed confirm for LIVE), kill switch, sessions + reconciliation, stream; tests/backend-client.test.js 8/8 |
+| 20 Dashboard modes | **DONE (core)** | live backend badge (mode + db status, offline fallback), same-origin default; verified in headless Chrome against the real backend |
 | 21 Windows launcher + /api/health | **DONE** | SPUSTIT.bat + tools/open-when-ready.mjs (waits for health, then opens browser), 3/3 tests + live check |
 | 22 Clean shutdown | **DONE** | SIGINT/SIGTERM handler, app.close({force}) closes server + DB, idempotent, tested |
 
 | 24 Binance mock server | **DONE** | server/exchange/mock.mjs (signature/recvWindow checks, 401/403/429/418/500, timeout-after-accept, partial fill, duplicate id) |
-| 25 Testnet opt-in integration | pending | — |
+| 25 Testnet opt-in integration | **DONE except real round trip** | API + UI + README opt-in; real testnet round trip blocked externally (no credentials) |
 | 26 CI | **DONE but BLOCKED** | .github/workflows/verify.yml active; GitHub refuses to start the job: "account is locked due to a billing issue" (external, not code) |
 
 ## Non-negotiables carried forward

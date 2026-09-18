@@ -519,3 +519,25 @@ Full gate: lint 89 files 0 warnings, 365/365 tests, smoke 35 assets — PASS (3/
 Phase 2: js/core/stream.js (browser kline WebSocket, injectable socket factory, reconnect with
 backoff, stale watchdog) + tests; then Phase 19/20 UI wiring (Settings/API token, credentials, mode
 buttons, kill switch, stream status; Dashboard mode badge) and Phase 4 History UI.
+
+
+# Long-run upgrade — cycle 12 (2026-09-18): append-only order trail (Phase 18)
+
+## Delivered
+- Migration 3 (schema v3): `live_order_events` table + index, and TWO database triggers that ABORT
+  any UPDATE or DELETE on it — append-only is enforced by SQLite, not by convention.
+- `server/db/live-repository.mjs`: `appendOrderEvent` (redacts credential-shaped keys via the same
+  `redactSecrets` as the audit log), `listOrderEvents`, `countOrderEvents`; `insertLiveOrder` and
+  `updateLiveOrder` now append events (only when the status actually changes, no no-op noise);
+  `updateLiveOrder` refuses unknown ids instead of silently creating state.
+- Tests `tests/live-events.test.js` 4/4: write trail (PENDING->NEW->FILLED, no-op ignored),
+  DB-level immutability (UPDATE and DELETE both abort), unknown-id refusal, raw payload redaction.
+- DB tests moved to 3 migrations; server-app health now reports schemaVersion 3.
+
+## Verification
+Full gate: lint 92 files 0 warnings, 377/377 tests, smoke 35 assets — PASS (3/3).
+
+## Next safe step
+Phase 19/20 UI wiring (Settings: token/credentials/mode/kill switch/stream; Dashboard mode badge),
+Phase 4 History UI over the DB/API, Phase 17 multi-strategy accounting. Independent verifier should
+re-audit the API + stream + append-only surface.

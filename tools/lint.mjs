@@ -37,7 +37,7 @@ export const FORBIDDEN_PATTERNS = [
  */
 const CREDENTIAL_ALLOWED = [
   /^server\//,
-  /^tests\/(api|binance-private|exchange|idempotency|live-risk|reconciliation|execution-broker)\.test\.js$/,
+  /^tests\/(api|binance-private|exchange|idempotency|live-events|live-risk|reconciliation|execution-broker)\.test\.js$/,
 ];
 
 /** True when a file is allowed to touch credential identifiers. */

@@ -4,6 +4,7 @@
  */
 
 import crypto from 'node:crypto';
+import { redactSecrets } from './repositories.mjs';
 
 export function newLiveId(prefix = 'lo') {
   return `${prefix}_${Date.now().toString(36)}_${crypto.randomBytes(6).toString('hex')}`;
@@ -41,6 +42,23 @@ export function setSessionKillSwitch(db, id, engaged) {
  * Insert an order unless the clientOrderId already exists.
  * @returns {{order: object, inserted: boolean}}
  */
+/** Append one immutable event for an order state change (Phase 18). */
+export function appendOrderEvent(db, { clientOrderId = null, sessionId = null, status, exchangeOrderId = null, raw = null, at = Date.now() }) {
+  if (!status) throw new Error('appendOrderEvent: chýba status.');
+  const info = db.prepare(`INSERT INTO live_order_events (client_order_id, session_id, status, exchange_order_id, raw_json, at)
+              VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(clientOrderId, sessionId, status, exchangeOrderId, raw ? JSON.stringify(redactSecrets(raw)) : null, at);
+  return db.prepare('SELECT * FROM live_order_events WHERE id = ?').get(info.lastInsertRowid);
+}
+
+export function listOrderEvents(db, clientOrderId) {
+  return db.prepare('SELECT * FROM live_order_events WHERE client_order_id = ? ORDER BY at, id').all(clientOrderId);
+}
+
+export function countOrderEvents(db) {
+  return Number(db.prepare('SELECT COUNT(*) AS n FROM live_order_events').get().n);
+}
+
 export function insertLiveOrder(db, order) {
   const id = order.id ?? newLiveId('lo');
   const info = db.prepare(`INSERT OR IGNORE INTO live_orders
@@ -49,6 +67,12 @@ export function insertLiveOrder(db, order) {
     .run(id, order.sessionId, order.clientOrderId ?? null, order.exchangeOrderId ?? null, order.intentId ?? null,
       order.symbol, order.side, order.type, order.qty, order.price ?? null, order.status,
       order.submittedAt ?? Date.now(), Date.now(), order.raw ? JSON.stringify(order.raw) : null);
+  if (info.changes === 1) {
+    appendOrderEvent(db, {
+      clientOrderId: order.clientOrderId ?? null, sessionId: order.sessionId, status: order.status ?? 'PENDING',
+      exchangeOrderId: order.exchangeOrderId ?? null, raw: order.raw ?? null,
+    });
+  }
   return { order: getLiveOrderByClientId(db, order.clientOrderId) ?? getLiveOrderById(db, id), inserted: info.changes === 1 };
 }
 
@@ -61,8 +85,13 @@ export function getLiveOrderByClientId(db, clientOrderId) {
 }
 
 export function updateLiveOrder(db, { clientOrderId, status, exchangeOrderId = null, raw = null }) {
+  const before = getLiveOrderByClientId(db, clientOrderId);
+  if (!before) throw new Error(`updateLiveOrder: neznámy clientOrderId ${clientOrderId}`);
   db.prepare(`UPDATE live_orders SET status = ?, exchange_order_id = COALESCE(?, exchange_order_id), raw_json = COALESCE(?, raw_json), updated_at = ? WHERE client_order_id = ?`)
     .run(status, exchangeOrderId, raw ? JSON.stringify(raw) : null, Date.now(), clientOrderId);
+  if (before.status !== status || exchangeOrderId) {
+    appendOrderEvent(db, { clientOrderId, sessionId: before.session_id, status, exchangeOrderId: exchangeOrderId ?? before.exchange_order_id, raw });
+  }
   return getLiveOrderByClientId(db, clientOrderId);
 }
 

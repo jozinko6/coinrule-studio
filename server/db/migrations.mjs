@@ -6,9 +6,34 @@
  * database can never be left half-migrated.
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const MIGRATIONS = [
+  {
+    id: 3,
+    name: 'live_order_events_append_only',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS live_order_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          client_order_id TEXT,
+          session_id TEXT,
+          status TEXT NOT NULL,
+          exchange_order_id TEXT,
+          raw_json TEXT,
+          at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_live_order_events_order ON live_order_events (client_order_id, at);
+        -- Append-only is enforced by the database, not by convention.
+        CREATE TRIGGER IF NOT EXISTS trg_live_order_events_no_update
+          BEFORE UPDATE ON live_order_events
+          BEGIN SELECT RAISE(ABORT, 'live_order_events is append-only'); END;
+        CREATE TRIGGER IF NOT EXISTS trg_live_order_events_no_delete
+          BEFORE DELETE ON live_order_events
+          BEGIN SELECT RAISE(ABORT, 'live_order_events is append-only'); END;
+      `);
+    },
+  },
   {
     id: 2,
     name: 'live_orders_client_id_unique',

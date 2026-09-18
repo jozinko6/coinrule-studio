@@ -37,7 +37,7 @@ test('GET /api/health reports app, mode and database status', async () => {
     assert.equal(body.mode, 'paper', 'the starter mode must be PAPER');
     assert.equal(body.liveEnabled, false, 'live trading can never be on after start');
     assert.equal(body.db.ok, true);
-    assert.equal(body.db.schemaVersion, 2);
+    assert.equal(body.db.schemaVersion, 3);
     assert.ok(body.db.migrations >= 1);
     assert.equal(res.headers.get('cache-control'), 'no-store');
   } finally {

@@ -642,3 +642,36 @@ hide a missing file.
 ## Remaining (honest scope)
 Phase 4 (History UI over the DB), Phase 17 (multi-strategy accounting); real TESTNET round trip needs
 credentials; CI stays blocked by the GitHub billing lock.
+
+
+# Long-run upgrade — cycle 16 (2026-09-18): disk cleanup + History UI (Phase 4)
+
+## Disk cleanup (C: was at 0.26 GB free!)
+- TEMP 8.8 GB -> 0.4 GB: deleted my session artifacts (files+dirs ~250 MB), TEMP items older than
+  6 h (8.2 GB, 16 locked files skipped), opencode leftovers (32 MB).
+- npm cache 7.1 GB -> 0.6 GB via `npm cache clean --force`.
+- Result: C: 0.26 GB -> **15.20 GB free** (14.94 GB reclaimed).
+- NOT touched (user data, reported only): Downloads 43.8 GB, Docker 29.8 GB, Documents 19.4 GB,
+  llamacpp 14.3 GB, .ollama 11.5 GB, OmniVoice_Local 11.1 GB, Applio_RVC 16.3 GB, Android 5.4 GB.
+
+## Phase 4 (History UI) core delivered
+- `server/app.mjs`: GET/POST /api/backtests, GET/DELETE /api/backtests/:id (token-protected),
+  using the existing repositories; 400 on a missing result, 404 on unknown id.
+- `js/data/backend.js`: backtests/backtest/saveBacktest/deleteBacktest methods.
+- `js/ui/backend-session.js`: one in-RAM client shared by all views (the Settings connect/disconnect
+  registers/clears it); the admin token still never persists.
+- `js/ui/views/backtest.js`: "História (SQLite)" card — save the current result, list the last 25
+  runs, delete a run; when no backend client is registered it links to Settings.
+- Tests: `tests/api.test.js` new test (save -> list -> get with trades+equityCurve -> 404 -> delete
+  -> 404 -> 400 without result). Caught and fixed a contract mismatch: the repository stores
+  `result.equityCurve` (not `result.equity`).
+
+## Verification
+Full gate: lint 95 files 0 warnings, 387/387 tests, smoke 37 assets, repo-hygiene 92/0 — PASS (4/4).
+Browser: #/backtest renders without errors; the History card body only appears when at least one
+strategy exists (fresh profile shows the strategies-empty state), so the card's connected path is
+covered by the API/client tests rather than by the browser check.
+
+## Remaining
+Phase 17 (multi-strategy accounting) and UI polish; real TESTNET round trip needs credentials; CI
+blocked by the GitHub billing lock.

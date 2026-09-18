@@ -7,6 +7,7 @@ import { TIMEFRAMES } from '../../core/rules.js';
 import { STRATEGY_COUNT } from '../../core/strategies.js';
 import { INDICATOR_REGISTRY } from '../../core/indicators.js';
 import { DEFAULT_BACKEND_URL, createBackendClient, defaultBackendUrl } from '../../data/backend.js';
+import { clearBackendClient, setBackendClient } from '../backend-session.js';
 
 /* ------------------------------------------------------- local backend panel */
 
@@ -42,6 +43,7 @@ function rerenderBackendPanel() {
 
 async function connectBackend() {
   backend = createBackendClient({ baseUrl: backendInfo.url, token: backendInfo.token });
+  setBackendClient(backend);
   await backendAction(async () => {
     await backend.health();
     await refreshBackendState();
@@ -88,7 +90,7 @@ function renderBackendPanel() {
         h('button', {
           class: 'btn', type: 'button',
           onclick: () => {
-            backend = null; backendInfo.status = null; backendInfo.risk = null;
+            backend = null; clearBackendClient(); backendInfo.status = null; backendInfo.risk = null;
             backendInfo.sessions = []; backendInfo.stream = null; backendInfo.error = null;
             rerenderBackendPanel();
           },

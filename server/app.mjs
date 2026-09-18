@@ -20,6 +20,7 @@ import { MIME, resolvePath } from '../tools/serve.mjs';
 import { defaultDbPath, openDatabase, appliedMigrations } from './db/database.mjs';
 import { SCHEMA_VERSION } from './db/migrations.mjs';
 import { createTradingContext } from './services/trading-context.mjs';
+import { deleteBacktestRun, getBacktestRun, listBacktestRuns, saveBacktestRun } from './db/repositories.mjs';
 import { BinanceApiError, BinanceTimeoutError } from './exchange/binance-private.mjs';
 import { RiskViolation } from './services/live-risk.mjs';
 import { ModeTransitionError } from './services/mode.mjs';
@@ -238,6 +239,37 @@ export function createApp({ root = ROOT, dbPath = null, clock = () => Date.now()
       const body = await readJson(req);
       const report = await context.reconcile(String(body.sessionId ?? ''));
       return respond(report.state === 'failed' ? 502 : 200, { ok: report.state !== 'failed', report });
+    }
+
+    if (urlPath === '/api/backtests' && req.method === 'GET') {
+      const rawLimit = Number(url.searchParams.get('limit') ?? 50);
+      const limit = Math.min(500, Math.max(1, Number.isFinite(rawLimit) ? rawLimit : 50));
+      return respond(200, { ok: true, runs: listBacktestRuns(db, { limit }) });
+    }
+    if (urlPath === '/api/backtests' && req.method === 'POST') {
+      const body = await readJson(req);
+      if (!body.result || typeof body.result !== 'object') {
+        throw Object.assign(new Error('Chýba result (výsledok backtestu).'), { statusCode: 400 });
+      }
+      saveBacktestRun(db, {
+        strategy: body.strategy ?? (body.strategyName ? { name: body.strategyName } : null),
+        result: body.result,
+        dataSource: body.dataSource ?? 'ui',
+        note: body.note ?? null,
+      });
+      const [latest] = listBacktestRuns(db, { limit: 1 });
+      return respond(201, { ok: true, run: latest });
+    }
+    if (urlPath.startsWith('/api/backtests/') && req.method === 'GET') {
+      const id = decodeURIComponent(urlPath.slice('/api/backtests/'.length));
+      const run = getBacktestRun(db, id);
+      if (!run) return respond(404, { ok: false, error: 'not_found', message: 'Backtest neexistuje.' });
+      return respond(200, { ok: true, run });
+    }
+    if (urlPath.startsWith('/api/backtests/') && req.method === 'DELETE') {
+      const id = decodeURIComponent(urlPath.slice('/api/backtests/'.length));
+      const removed = deleteBacktestRun(db, id);
+      return respond(removed ? 200 : 404, { ok: removed });
     }
 
     if (urlPath === '/api/stream' && req.method === 'GET') return respond(200, { ok: true, stream: context.streamStatus() });

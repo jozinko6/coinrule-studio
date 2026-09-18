@@ -221,3 +221,42 @@ test('CORS blocks non-loopback origins even with a valid token', async () => {
     await b.stop();
   }
 });
+test('backtest history is stored, listed, fetched and deleted over the API', async () => {
+  const b = await boot();
+  try {
+    const result = {
+      symbol: 'BTCUSDT',
+      strategies: [{ id: 's1', name: 'Test strategy' }],
+      assumptions: { startingCash: 10_000, feePct: 0.1, executionModel: 'conservative', participationRate: 0.25 },
+      metrics: { startingCash: 10_000, startTime: 1_700_000_000_000, endTime: 1_700_003_600_000, returnPct: 5 },
+      trades: [{ symbol: 'BTCUSDT', qty: 1, entryPrice: 100, exitPrice: 110, netPnl: 9.9, netPnlPct: 9.9 }],
+      equityCurve: [{ time: 1_700_000_000_000, equity: 10_000, price: 100 }],
+    };
+    const saved = await b.call('POST', '/api/backtests', { result, strategyName: 'Test strategy', symbol: 'BTCUSDT' });
+    assert.equal(saved.status, 201, JSON.stringify(saved.body).slice(0, 200));
+    const id = saved.body.run.id;
+    assert.ok(id);
+
+    const list = await b.call('GET', '/api/backtests?limit=10');
+    assert.equal(list.status, 200);
+    assert.ok(list.body.runs.some((run) => run.id === id), 'the saved run must appear in the list');
+
+    const one = await b.call('GET', `/api/backtests/${id}`);
+    assert.equal(one.status, 200);
+    assert.equal(one.body.run.id, id);
+    assert.equal(one.body.run.trades.length, 1);
+    assert.equal(one.body.run.equityCurve.length, 1);
+
+    const missing = await b.call('GET', '/api/backtests/nope');
+    assert.equal(missing.status, 404);
+
+    const removed = await b.call('DELETE', `/api/backtests/${id}`);
+    assert.equal(removed.status, 200);
+    assert.equal((await b.call('GET', `/api/backtests/${id}`)).status, 404);
+
+    const noResult = await b.call('POST', '/api/backtests', {});
+    assert.equal(noResult.status, 400);
+  } finally {
+    await b.stop();
+  }
+});

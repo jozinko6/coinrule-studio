@@ -3,6 +3,7 @@
 import { h, stat, table, pill, toast, download, fmtNum, fmtMoney, fmtPct, fmtDate, fmtQty, fmtDuration, signClass } from '../dom.js';
 import { drawEquity, drawBars, drawCandles } from '../charts.js';
 import { state, store, emit, navigate, loadCandles } from '../state.js';
+import { getBackendClient } from '../backend-session.js';
 import { backtest, compareStrategies } from '../../core/backtest.js';
 import { sma, ema } from '../../core/indicators.js';
 
@@ -38,7 +39,83 @@ export function render() {
   } else {
     wrap.append(h('div', { class: 'card' }, h('div', { class: 'empty' }, 'Spusti backtest pre zobrazenie výsledkov.')));
   }
+  wrap.append(historyCard());
   return wrap;
+}
+
+/** Backtest history stored in the local SQLite database (Phase 4). */
+function historyCard() {
+  const card = h('div', { class: 'card' });
+  card.append(h('div', { class: 'card-head' },
+    h('h3', null, 'História (SQLite)'),
+    pill('lokálna DB', 'info')));
+  const body = h('div');
+  card.append(body);
+
+  const client = getBackendClient();
+  if (!client) {
+    body.append(h('div', { class: 'empty' },
+      h('p', null, 'Backend nie je pripojený — história sa ukladá do lokálnej databázy.'),
+      h('button', { class: 'btn', type: 'button', onclick: () => navigate('settings') }, 'Pripojiť backend v Nastaveniach')));
+    return card;
+  }
+
+  const actions = h('div', { class: 'split' });
+  if (state.backtest) {
+    actions.append(h('button', {
+      class: 'btn primary', type: 'button',
+      onclick: () => { void saveCurrent(); },
+    }, 'Uložiť aktuálny výsledok do DB'));
+  }
+  actions.append(h('button', { class: 'btn', type: 'button', onclick: () => { void refresh(); } }, 'Obnoviť zoznam'));
+  body.append(actions);
+
+  const listBox = h('div');
+  body.append(listBox);
+
+  async function saveCurrent() {
+    try {
+      const res = state.backtest;
+      await client.saveBacktest({
+        result: res,
+        strategyName: res.strategyName,
+        symbol: res.symbol ?? state.symbol,
+        dataSource: 'ui',
+      });
+      toast('Backtest uložený do databázy', 'ok');
+      await refresh();
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+  }
+
+  async function refresh() {
+    try {
+      const data = await client.backtests({ limit: 25 });
+      const rows = (data.runs ?? []).map((run) => [
+        fmtDate(run.createdAt ?? run.created_at),
+        run.strategyName ?? run.strategy_name ?? '—',
+        run.symbol ?? '—',
+        String(run.tradeCount ?? run.trade_count ?? 0),
+        h('button', {
+          class: 'icon-btn', type: 'button',
+          onclick: () => { void (async () => {
+            try { await client.deleteBacktest(run.id); toast('Zmazané', 'ok'); await refresh(); }
+            catch (err) { toast(err.message, 'err'); }
+          })(); },
+        }, '✕'),
+      ]);
+      listBox.replaceChildren(table(
+        [{ label: 'Dátum' }, { label: 'Stratégia' }, { label: 'Symbol' }, { label: 'Obchody', num: true }, { label: '' }],
+        rows,
+        { empty: 'Žiadne uložené backtesty.' }));
+    } catch (err) {
+      listBox.replaceChildren(h('p', { class: 'neg' }, err.message));
+    }
+  }
+
+  void refresh();
+  return card;
 }
 
 /* -------------------------------------------------------------------- setup */

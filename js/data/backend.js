@@ -129,6 +129,11 @@ export function createBackendClient({ baseUrl = DEFAULT_BACKEND_URL, token = '',
     placeOrder: (order) => request('POST', '/api/orders', order),
     cancelOrder: (cancel) => request('POST', '/api/orders/cancel', cancel),
 
+    backtests: ({ limit = 50 } = {}) => request('GET', '/api/backtests?limit=' + encodeURIComponent(limit)),
+    backtest: (id) => request('GET', '/api/backtests/' + encodeURIComponent(id)),
+    saveBacktest: (payload) => request('POST', '/api/backtests', payload),
+    deleteBacktest: (id) => request('DELETE', '/api/backtests/' + encodeURIComponent(id)),
+
     streamStatus: () => request('GET', '/api/stream'),
     streamStart: (sessionId, options = {}) => request('POST', '/api/stream/start', { sessionId, ...options }),
     streamStop: () => request('POST', '/api/stream/stop'),

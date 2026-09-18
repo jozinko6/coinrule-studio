@@ -90,15 +90,23 @@ export async function runSmoke({ baseUrl, token, key = '', secret = '', symbol =
     step('health', { mode: health.mode, db: health.db?.ok ?? false });
     if (!health.db?.ok) throw new Error('Databáza backendu nie je pripravená.');
 
+    const status = await call('GET', '/api/status');
+    const configured = Boolean(status.credentials?.configured);
+
     if (dry) {
-      const status = await call('GET', '/api/status');
-      step('dry: status', { mode: status.mode.mode, credentials: status.credentials.configured });
+      step('dry: status', { mode: status.mode.mode, credentials: configured, brokerReady: status.brokerReady });
       return finalize('ok');
     }
 
-    if (!key || !secret) throw new Error('Chýbajú COINRULE_BINANCE_KEY / COINRULE_BINANCE_SECRET.');
-    const creds = await call('POST', '/api/credentials', { key, secret });
-    step('credentials applied (RAM only)', { configured: creds.credentials.configured, key: creds.credentials.keyMasked });
+    if (configured) {
+      // The backend already got its key/secret from its own environment, so the
+      // harness never has to touch them at all.
+      step('credentials already configured on the backend', { key: status.credentials.keyMasked });
+    } else {
+      if (!key || !secret) throw new Error('Chýbajú COINRULE_BINANCE_KEY / COINRULE_BINANCE_SECRET (ani ich backend nemá nakonfigurované).');
+      const creds = await call('POST', '/api/credentials', { key, secret });
+      step('credentials applied (RAM only)', { configured: creds.credentials.configured, key: creds.credentials.keyMasked });
+    }
 
     const mode = await call('POST', '/api/mode', { action: 'testnet' });
     step('mode TESTNET', { mode: mode.mode });

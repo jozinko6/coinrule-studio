@@ -129,3 +129,13 @@ test('--dry only inspects the backend', async () => {
   assert.equal(fake.calls.filter((c) => c.key === 'POST /api/mode').length, 0);
   assert.equal(fake.calls.filter((c) => c.key === 'POST /api/orders').length, 0);
 });
+test('credentials already configured on the backend are used without sending them again', async () => {
+  const fake = fakeBackend({
+    'GET /api/status': () => ({ mode: { mode: 'paper' }, credentials: { configured: true, keyMasked: 'env-...-mask' }, brokerReady: true }),
+  });
+  const report = await runSmoke({ baseUrl: 'http://x', token: 't', key: '', secret: '', fetchImpl: fake.impl });
+  assert.equal(report.ok, true);
+  assert.equal(fake.calls.filter((c) => c.key === 'POST /api/credentials').length, 0, 'no credential ever passes through the harness');
+  assert.equal(fake.calls.filter((c) => c.key === 'POST /api/orders').length, 1);
+  assert.equal(fake.calls.filter((c) => c.key === 'POST /api/risk/killswitch').at(-1).body.engaged, true);
+});

@@ -376,3 +376,32 @@ Full gate: lint 81 files 0 warnings, 337/337 tests, smoke 35 assets — PASS (3/
 Phase 12 reconciliation: on session start fetch openOrders/allOrders/myTrades, resolve UNKNOWN orders,
 verify local fills against exchange trades, and refuse trading until reconciliation_state = ok.
 Then Phase 14 ExecutionBroker (paper/live behind one interface) and Phase 13 user data stream.
+
+
+# Long-run upgrade — cycle 6 (2026-09-18): reconciliation
+
+## Delivered
+- `server/services/reconciliation.mjs` — exchange truth wins:
+  * UNKNOWN/PENDING local orders are resolved from openOrders/allOrders (accepted -> synced status,
+    never seen -> REJECTED with reason `never_accepted_at_exchange`);
+  * exchange orders without a local row are imported as `intent_id='external'` and reported as a
+    mismatch so the UI/operator can see manual or foreign orders;
+  * a locally-open order missing from a FULLY fetched exchange history is a mismatch, not trust
+    (guarded by `canVerifyAll` so a failed fetch never fabricates mismatches);
+  * fills import idempotently by exchange trade id and link to local orders via orderId;
+  * session `reconciliation_state` becomes ok/mismatch/failed; `canTradeAfterReconciliation` gates
+    any trading until the state is ok.
+- Mock exchange: `setTimeoutBeforeAccept()` (the request never reaches the exchange) so both timeout
+  classes are testable; `setTimeoutAfterAccept()` already covered the accepted-but-unknown case.
+- Tests: `tests/reconciliation.test.js` 7/7 — consistent session + fill dedupe, UNKNOWN->FILLED,
+  UNKNOWN->REJECTED (never accepted), external order imported + mismatch then ok on the second pass,
+  partial fill synced after cancellation, symbol-less session, ghost order flagged.
+
+## Verification
+Full gate: lint 83 files 0 warnings, 344/344 tests, smoke 35 assets — PASS (3/3).
+
+## Next safe step
+Phase 14 ExecutionBroker: one interface for PAPER/TESTNET/LIVE so the UI never talks to a client
+directly (paper -> js/core/paper.js, testnet/live -> idempotency + reconciler + LiveRiskGuard), with
+a hard rule that no order path bypasses the guard. Then Phase 13 (user data stream polling fallback
+is already reconcilable) and Phase 15 action handlers.

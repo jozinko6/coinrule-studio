@@ -57,6 +57,7 @@ export function createMockExchange({ apiKey = 'test-key', apiSecret = 'test-secr
     counters: { requests: 0, signed: 0, placed: 0, rejected: 0, canceled: 0, withdrawalAttempts: 0 },
     nextFailure: null,          // { status, code, message, retryAfter }
     timeoutAfterAccept: false,
+    timeoutBeforeAccept: false,
     partialFillQty: null,
     balanceOverride: balances ?? [
       { asset: 'USDT', free: '10000.00000000', locked: '0.00000000' },
@@ -189,6 +190,12 @@ export function createMockExchange({ apiKey = 'test-key', apiSecret = 'test-secr
     }
 
     if (path === '/api/v3/order' && method === 'POST') {
+      if (state.timeoutBeforeAccept) {
+        state.timeoutBeforeAccept = false;
+        const err = new TypeError('fetch failed');
+        err.cause = { code: 'UND_ERR_CONNECT_TIMEOUT' };
+        throw err; // the exchange never saw the request
+      }
       const clientOrderId = params.get('newClientOrderId') ?? `mock_${state.seq + 1}`;
       if (state.orders.has(clientOrderId)) {
         state.counters.rejected += 1;
@@ -263,6 +270,7 @@ export function createMockExchange({ apiKey = 'test-key', apiSecret = 'test-secr
     setTimestampDrift(ms) { state.serverClockOffsetMs = ms; },
     failNext(failure) { state.nextFailure = failure; },
     setTimeoutAfterAccept(value = true) { state.timeoutAfterAccept = value; },
+    setTimeoutBeforeAccept(value = true) { state.timeoutBeforeAccept = value; },
     setPartialFill(qty) { state.partialFillQty = qty; },
     setBalances(list) { state.balanceOverride = list; },
     getOrder(clientOrderId) { return state.orders.get(clientOrderId) ?? null; },

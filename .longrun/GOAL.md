@@ -84,12 +84,12 @@ Priority order (user-specified): CORRECTNESS → SAFETY → DATABASE → RELIABI
 | 9 Exchange filters | **DONE (core)** | server/exchange/filters.mjs (tick/step/notional/status), 9/9 tests |
 | 10 Live risk engine + kill switch | **DONE (core)** | server/services/live-risk.mjs, tests/live-risk.test.js 9/9 (kill switch default ON) |
 | 11 Idempotency | **DONE (core)** | server/services/idempotency.mjs + live-repository; deterministic intent hash ids, never resend after timeout (-2010/timeout -> UNKNOWN), tests/idempotency.test.js 8/8 |
-| 12 Reconciliation | in progress | live-repository READY (open orders / UNKNOWN orders / fills); startup reconcile pass pending |
+| 12 Reconciliation | **DONE (core)** | server/services/reconciliation.mjs (UNKNOWN/PENDING resolution, external-order import + mismatch, idempotent fills, never-accepted -> REJECTED), tests/reconciliation.test.js 7/7 |
 | 13 User data stream | pending | — |
 | 14 ExecutionBroker interface | pending | — |
 | 15 Action handler completeness | pending | — |
 | 16 Backtest assumptions + net benchmark | **DONE** | assumptions in result, net buy&hold fee model |
-| 23 Tests (full list) | in progress | 337 tests; +9 mode, +8 idempotency (exactly-once vs mock+DB) |
+| 23 Tests (full list) | in progress | 344 tests; +7 reconciliation (unknown/external/fills) |
 | 17 Multi-strategy accounting | pending | — |
 | 18 Append-only DB write model | pending | — |
 | 19 Settings UI (Binance) | pending | — |

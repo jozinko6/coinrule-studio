@@ -81,3 +81,43 @@ Report: .longrun/verification_report.json
 - Long-only spot semantics (no shorts/margin).
 - Bundled offline datasets are simulated, not real history (UI labels them).
 - State lives in localStorage; no server database.
+
+---
+
+# Milestone 2 (2026-09-18) — scanner, alerts, Coinrule library, GitHub
+
+## Status: COMPLETE (independent verifier round pending)
+
+### Delivered
+- `js/core/scanner.js` + view `scanner` — 12 presetov, viacpárový sken so skóre.
+- `js/core/alerts.js` + view `alerts` — 12 typov, lokálne vyhodnotenie, história spustení.
+- store schéma 4 — `alerts` + `alertLog` (migrácia, import/export union).
+- 42 Coinrule šablón v novej rodine `coinrule` → 128 šablón v 13 rodinách.
+- README sekcia 12, AGENTS layout, GOAL AC12-AC14.
+
+### Verification evidence
+```
+node tools/verify.mjs
+[PASS] lint          — 55 súborov, 0 varovaní
+[PASS] unit-tests    — 247 prešlo, 0 zlyhalo
+[PASS] runtime-smoke — 34 assetov (32 JS)
+Verdict: PASS (3/3)
+```
+
+### Real-browser evidence (headless Chrome + CDP)
+- Boot: title „CoinRule Studio — Prehľad“, Binance online, 500 sviečok, BTCUSDT 78 213,13.
+- Scanner: sken watchlistu (3 páry), výsledky zoradené, SOLUSDT 1 signál (skóre 8,45).
+- Alerts: vytvorené price_above value 0 → uložené, kontrola prebehla, 1 trigger, log zapísaný.
+
+### Findings fixed during milestone 2
+1. `scanner` MACD cross je numericky na hrane (`crossOver` s presnou rovnosťou) — fixtúry
+   overené empiricky; mŕtvy trh (ATR ≈ 0) už nedáva rsi/bb signály.
+2. `bb_squeeze` na konštantnej šírke pásma vždy „squeeze“ — teraz kvantilová podmienka.
+3. `alerts` mali pevný warmup — vlastné periódy (napr. EMA 5/10) hlásili „málo dát“;
+   pridané dynamické `minBars(alert)`.
+4. Test fixtures change_pct bola matematicky zlá (106→100 je -5,66 %, nie -6 %).
+5. `appendAlertLog` zoradí dávku podľa `at` zostupne (najnovšie prvé).
+
+### GitHub
+- repo: https://github.com/jozinko6/coinrule-studio (public)
+- commit `700662e` na `main`, lokálne HEAD == origin/main.

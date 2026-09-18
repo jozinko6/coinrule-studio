@@ -52,6 +52,6 @@ dependencies" and the existing architecture already implements the full UI.
 - Coinrule strategy coverage: 42 public Coinrule templates implemented in a new
   `coinrule` family (128 templates total), all validated and backtested by
   `tests/strategies.test.js`.
-- AC14 GitHub: pending the release commit (recorded in state.md after push).
+- AC14 GitHub: https://github.com/jozinko6/coinrule-studio (public), commit 700662e pushed to main.
 
 Gate: `node tools/verify.mjs` → lint 55 files / 247 tests / 34 assets, verdict PASS.

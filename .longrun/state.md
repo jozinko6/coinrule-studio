@@ -151,3 +151,15 @@ Verdict: PASS (3/3)
   `BUTTON` (predtým overlay), kliky prešli `scanner → alerts → dashboard`, sken
   vrátil 3 výsledky, v stránke 0 výnimiek.
 - Gate po oprave: `node tools/verify.mjs` → PASS 3/3 (lint 55, 248 testov, 34 assetov).
+
+### Rozšírená množina párov
+- Nový modul `js/data/symbols.js`: 28 hlavných + 37 volatilných párov (memecoiny,
+  high-beta alty), kategórie pre picker, `isVolatileSymbol`/`isValidSymbol`.
+- Skener: tlačidlá „Hlavné (28)“ / „Volatilné (37)“, limit 48 párov na sken.
+- Offline simulácia je per-symbol (seed z názvu) a volatilné páry dostávajú
+  „volatile“ scénář — dva neznáme páry už nikdy nemajú rovnaké sviečky.
+- Store schéma 5: predvolený watchlist rozšírený o DOGE/PEPE/WIF/INJ/SUI;
+  starý nedotknutý default sa upgraduje, používateľské zoznamy zostávajú.
+- Dôkaz: gate PASS 3/3 (57 súborov, 255 testov, 35 assetov); reálny Chrome:
+  optgroups 28+37, klik „Volatilné (37)“ → 37 párov, sken 37/37, 15 so signálom,
+  0 výnimiek.

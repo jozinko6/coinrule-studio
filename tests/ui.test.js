@@ -271,3 +271,18 @@ test('the alerts view creates, stores and checks an alert', async () => {
   assert.ok(store.state.alertLog.length >= 1, 'the trigger log is empty');
   assert.match(textOf(viewRoot()), /História spustení/);
 });
+
+test('the scanner exposes the volatile pair universe', () => {
+  navigate('scanner');
+  const btn = viewRoot().querySelectorAll('button').find((b) => b.textContent.includes('Volatilné'));
+  assert.ok(btn, 'the volatile quick-set button is missing');
+  btn.click();
+  assert.ok(state.scanSymbols.length >= 30, `only ${state.scanSymbols.length} volatile pairs`);
+  assert.ok(state.scanSymbols.includes('PEPEUSDT'));
+  assert.ok(state.scanSymbols.includes('WIFUSDT'));
+  const majorsBtn = viewRoot().querySelectorAll('button').find((b) => b.textContent.includes('Hlavné'));
+  assert.ok(majorsBtn, 'the majors quick-set button is missing');
+  majorsBtn.click();
+  assert.ok(state.scanSymbols.includes('BTCUSDT'));
+  assert.ok(!state.scanSymbols.includes('PEPEUSDT'));
+});

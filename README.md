@@ -8,7 +8,7 @@ a virtuálne (paper) obchodovanie s reálnymi trhovými dátami z verejného API
 
 ```
 node tools/serve.mjs      →  http://127.0.0.1:8787
-node --test               →  247 testov
+node --test               →  255 testov
 node tools/verify.mjs     →  plná verifikácia (lint + testy + runtime smoke)
 ```
 
@@ -64,6 +64,7 @@ js/core/                čistý engine — beží v prehliadači aj v node --tes
   scanner.js            viacpárový skener trhu (12 presetov, skóre)
   alerts.js             lokálne cenové a indikátorové upozornenia
 js/data/                trhové dáta
+  symbols.js            kurátorovaná USDT množina (28 hlavných + 37 volatilných)
   binance.js            verejné REST + WebSocket (bez autentifikácie)
   synthetic.js          deterministický simulátor trhu (GARCH-like volatilita)
   seed.js               zabudované deterministické datasety
@@ -73,7 +74,7 @@ js/ui/                  DOM vrstva (10 views; moduly nesiahnu na `document` pri 
   dom.js charts.js state.js views/*
 js/app.js               bootstrap a routing
 tools/                  serve.mjs, lint.mjs, verify.mjs
-tests/                  node:test sada (247 testov)
+tests/                  node:test sada (255 testov)
 ```
 
 Kľúčové pravidlo: `js/core/**` a `js/data/**` **nesmú** siahať na DOM, takže celý engine je
@@ -173,6 +174,19 @@ Simulátor generuje sviečky modelom s GARCH-like zhlukovaním volatility a rež
 zmenami trendu. Je plne deterministický (seed), takže testy majú presné očakávané hodnoty.
 V UI je vždy jasne označené, ktorý zdroj je aktívny.
 
+### Obchodované páry
+
+* **Hlavné páry (28):** BTC, ETH, BNB, SOL, XRP, ADA, DOGE, AVAX, DOT, LINK, LTC, TRX,
+  ATOM, NEAR, APT, ARB, OP, SUI, TON, HBAR, BCH, ETC, FIL, ICP, ALGO, VET, STX, IMX.
+* **Volatilné páry (37):** PEPE, SHIB, WIF, BONK, FLOKI, DOGS, PNUT, BOME, ORDI, 1000SATS,
+  RATS, MEME, NEIRO a high-beta alty (INJ, SEI, TIA, JUP, PYTH, WLD, CRV, LDO, ENS, FET,
+  RENDER, PENDLE, ENA, ETHFI, W, ZK, STRK, BLUR, GMX, DYDX, ARKM, MANTA, ALT, AEVO).
+* Ponuka páru v hornej lište je rozdelená na kategórie; skener má tlačidlá
+  „Hlavné (28)“ a „Volatilné (37)“.
+* Volatilné páry majú výrazne širšie sviečky — menšia veľkosť pozície a stop-loss podľa
+  ATR sú rozumný základ. Binance občas pár delistuje; neznámy pár sa vtedy ticho prepne
+  na determinovanú simuláciu, takže aplikácia funguje ďalej.
+
 ## 9. Testy a verifikácia
 
 ```
@@ -192,9 +206,10 @@ tests/smoke.test.js        server + všetky assety + import všetkých UI modulo
 tests/ui.test.js           reálne UI proti stub DOM: boot, všetky views, editor, backtest
 tests/scanner.test.js      skener: referenčné hodnoty presetov, ranking, determinizmus
 tests/alerts.test.js       upozornenia: typy, vyhodnotenie, cooldown, história spustení
+tests/symbols.test.js      množina párov: formát, kategórie, re-exporty binance/market
 ```
 
-Spolu 16 testovacích súborov (`tests/*.test.js`) plus pomocný stub DOM.
+Spolu 17 testovacích súborov (`tests/*.test.js`) plus pomocný stub DOM.
 
 `node tools/verify.mjs` je jediný deterministický vstupný bod a zapisuje strojový report.
 

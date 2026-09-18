@@ -6,7 +6,8 @@
  * so tests have exact, reproducible inputs. The UI labels them as "simulované".
  */
 
-import { generateCandles } from './synthetic.js';
+import { generateCandles, hashSeed } from './synthetic.js';
+import { isVolatileSymbol } from './symbols.js';
 
 export const SEED_DATASETS = {
   'BTCUSDT:1h': { symbol: 'BTCUSDT', timeframe: '1h', scenario: 'bull', count: 1500, startPrice: 26_000, seed: 1001 },
@@ -27,10 +28,12 @@ export function getSeedCandles(symbol = 'BTCUSDT', timeframe = '1h', count = nul
   const cfg = SEED_DATASETS[key] ?? {
     symbol,
     timeframe,
-    scenario: 'sideways',
+    // Volatile pairs get a volatile simulation and a per-symbol seed, so two
+    // unknown symbols never share the same candles.
+    scenario: isVolatileSymbol(symbol) ? 'volatile' : 'sideways',
     count: 1000,
-    startPrice: 100,
-    seed: 9000,
+    startPrice: 1 + (hashSeed(symbol) % 300),
+    seed: hashSeed(symbol + '|' + timeframe),
   };
   const cacheKey = `${key}:${count ?? cfg.count}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey);

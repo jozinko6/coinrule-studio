@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Store, MemoryStorage, defaultState, migrate, STORE_SCHEMA, STORE_KEY } from '../js/store/store.js';
+import { Store, MemoryStorage, defaultState, defaultWatchlist, migrate, STORE_SCHEMA, STORE_KEY } from '../js/store/store.js';
 import { createStrategy } from '../js/core/rules.js';
 import { createAlert } from '../js/core/alerts.js';
 
@@ -201,9 +201,9 @@ test('reset returns the store to defaults', () => {
 
 /* ------------------------------------------------------------------ alerts */
 
-test('a fresh store has empty alert state and schema v4', () => {
+test('a fresh store has empty alert state and schema v5', () => {
   const s = newStore().load();
-  assert.equal(STORE_SCHEMA, 4);
+  assert.equal(STORE_SCHEMA, 5);
   assert.deepEqual(s.alerts, []);
   assert.deepEqual(s.alertLog, []);
 });
@@ -263,7 +263,7 @@ test('migrate upgrades a v3 document and preserves stored alerts', () => {
     alertLog: [{ alertId: 'kept', at: 1 }],
   };
   const out = migrate(v3);
-  assert.equal(out.schema, 4);
+  assert.equal(out.schema, STORE_SCHEMA);
   assert.equal(out.alerts[0].id, 'kept');
   assert.equal(out.alertLog.length, 1);
 
@@ -291,4 +291,16 @@ test('export/import round-trips alerts and unions them on merge', () => {
   c.importJSON(text, { merge: false });
   assert.deepEqual(c.alerts.map((x) => x.id), ['a1']);
   assert.equal(c.state.alertLog.length, 1);
+});
+
+test('migrate widens an untouched default watchlist but keeps curated lists', () => {
+  const untouched = migrate({ schema: 4, watchlist: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'] });
+  assert.ok(untouched.watchlist.includes('PEPEUSDT'), 'volatile pairs should be added');
+  assert.ok(untouched.watchlist.length >= 6);
+
+  const curated = migrate({ schema: 4, watchlist: ['BTCUSDT', 'LINKUSDT'] });
+  assert.deepEqual(curated.watchlist, ['BTCUSDT', 'LINKUSDT'], 'user curation must survive');
+
+  const fresh = migrate(null);
+  assert.deepEqual(fresh.watchlist, defaultWatchlist());
 });

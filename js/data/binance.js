@@ -369,8 +369,7 @@ async function safeText(res) {
 }
 
 /** Well-known public pairs offered in the UI. */
-export const POPULAR_SYMBOLS = [
-  'BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT',
-  'AVAXUSDT', 'DOTUSDT', 'MATICUSDT', 'LINKUSDT', 'LTCUSDT', 'TRXUSDT', 'ATOMUSDT',
-  'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT', 'INJUSDT', 'SUIUSDT', 'TONUSDT', 'PEPEUSDT',
-];
+export {
+  MAJOR_SYMBOLS, VOLATILE_SYMBOLS, POPULAR_SYMBOLS, SYMBOL_CATEGORIES,
+  isVolatileSymbol, isValidSymbol, SYMBOL_PATTERN,
+} from './symbols.js';

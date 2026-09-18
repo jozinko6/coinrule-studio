@@ -6,7 +6,7 @@ import { qs, qsa, mount, toast } from './ui/dom.js';
 import {
   state, store, market, emit, onChange, navigate, viewFromHash, loadCandles, setSource,
 } from './ui/state.js';
-import { POPULAR_SYMBOLS } from './data/market.js';
+import { POPULAR_SYMBOLS, SYMBOL_CATEGORIES } from './data/market.js';
 import { TIMEFRAMES } from './core/rules.js';
 
 import * as dashboard from './ui/views/dashboard.js';
@@ -39,14 +39,32 @@ const TITLES = {
 
 function buildSelectors() {
   const symbolSelect = qs('#symbol-select');
-  const symbols = [...new Set([...POPULAR_SYMBOLS, ...(store.state.watchlist ?? []), state.symbol])];
-  mount(symbolSelect, ...symbols.map((sym) => {
+  const known = new Set([...POPULAR_SYMBOLS, ...(store.state.watchlist ?? []), state.symbol]);
+  const option = (sym) => {
     const o = document.createElement('option');
     o.value = sym;
     o.textContent = sym;
     if (sym === state.symbol) o.selected = true;
     return o;
-  }));
+  };
+  const grouped = new Set();
+  const groups = [];
+  for (const category of SYMBOL_CATEGORIES) {
+    const symbols = category.symbols.filter((sym) => known.has(sym));
+    if (!symbols.length) continue;
+    const group = document.createElement('optgroup');
+    group.label = category.label;
+    for (const sym of symbols) { grouped.add(sym); group.append(option(sym)); }
+    groups.push(group);
+  }
+  const extra = [...known].filter((sym) => !grouped.has(sym));
+  if (extra.length) {
+    const group = document.createElement('optgroup');
+    group.label = 'Sledované a ďalšie';
+    for (const sym of extra) group.append(option(sym));
+    groups.push(group);
+  }
+  mount(symbolSelect, ...groups);
   symbolSelect.onchange = () => {
     loadCandles({ symbol: symbolSelect.value }).then(emit);
   };

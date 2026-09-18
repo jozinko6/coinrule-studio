@@ -10,11 +10,17 @@
  * component (chart, backtester, paper trader) is source-agnostic.
  */
 
-import { BinancePublic, POPULAR_SYMBOLS } from './binance.js';
+import { BinancePublic } from './binance.js';
 import { getSeedCandles, SEED_DATASETS } from './seed.js';
-import { generateCandles, createTickSimulator, DEMO_PRESETS, SCENARIOS } from './synthetic.js';
+import { generateCandles, createTickSimulator, DEMO_PRESETS, SCENARIOS, hashSeed } from './synthetic.js';
+import {
+  MAJOR_SYMBOLS, POPULAR_SYMBOLS, SYMBOL_CATEGORIES, VOLATILE_SYMBOLS, isVolatileSymbol,
+} from './symbols.js';
 
-export { POPULAR_SYMBOLS, DEMO_PRESETS, SCENARIOS, SEED_DATASETS };
+export {
+  POPULAR_SYMBOLS, MAJOR_SYMBOLS, VOLATILE_SYMBOLS, SYMBOL_CATEGORIES,
+  DEMO_PRESETS, SCENARIOS, SEED_DATASETS,
+};
 
 export const SOURCE = { BINANCE: 'binance', SYNTHETIC: 'synthetic', AUTO: 'auto' };
 
@@ -74,8 +80,16 @@ export class MarketData {
   synthetic({ symbol = 'BTCUSDT', timeframe = '1h', limit = 500 }) {
     let candles = getSeedCandles(symbol, timeframe);
     if (candles.length < limit) {
+      // Unknown pairs get a deterministic, symbol-specific series; members of
+      // the volatile universe use the high-volatility scenario so offline
+      // demos behave like the real thing.
       candles = generateCandles({
-        symbol, timeframe, count: Math.max(limit, 800), scenario: 'sideways', seed: 4242, startPrice: candles[0]?.close ?? 100,
+        symbol,
+        timeframe,
+        count: Math.max(limit, 800),
+        scenario: isVolatileSymbol(symbol) ? 'volatile' : 'sideways',
+        seed: hashSeed(symbol + '|' + timeframe + '|' + limit),
+        startPrice: 1 + (hashSeed(symbol) % 300),
       });
     }
     const sliced = candles.slice(-limit);

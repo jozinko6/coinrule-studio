@@ -95,3 +95,18 @@ test('sanitizeCandles sorts, dedupes and drops invalid rows', () => {
   assert.equal(clean[0].time, 1000);
   assert.equal(clean[1].time, 2000);
 });
+
+test('unknown pairs get deterministic, symbol-specific simulated series', () => {
+  const a1 = getSeedCandles('NEWCOINUSDT', '1h');
+  const a2 = getSeedCandles('NEWCOINUSDT', '1h');
+  const b = getSeedCandles('OTHERCOINUSDT', '1h');
+  assert.deepEqual(a1, a2, 'same symbol must be deterministic');
+  assert.notDeepEqual(a1.map((c) => c.close), b.map((c) => c.close), 'different symbols must differ');
+
+  const avgRange = (candles) => candles.slice(-200)
+    .reduce((acc, c) => acc + (c.high - c.low) / c.close, 0) / 200;
+  const volatileSeries = getSeedCandles('PEPEUSDT', '1h');
+  const stableSeries = getSeedCandles('NEWCOINUSDT', '1h');
+  assert.ok(avgRange(volatileSeries) > avgRange(stableSeries),
+    'volatile universe members should have wider ranges than an unknown pair');
+});

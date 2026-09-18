@@ -8,7 +8,7 @@
  */
 
 export const STORE_KEY = 'coinrule-studio/v1';
-export const STORE_SCHEMA = 4;
+export const STORE_SCHEMA = 5;
 
 export class MemoryStorage {
   constructor() { this.map = new Map(); }
@@ -24,6 +24,11 @@ export function defaultStorage() {
     if (typeof localStorage !== 'undefined' && localStorage) return localStorage;
   } catch { /* access can throw in sandboxed iframes */ }
   return new MemoryStorage();
+}
+
+/** Fresh-install watchlist: majors plus a few very volatile pairs. */
+export function defaultWatchlist() {
+  return ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'DOGEUSDT', 'PEPEUSDT', 'WIFUSDT', 'INJUSDT', 'SUIUSDT'];
 }
 
 export function defaultState() {
@@ -45,7 +50,7 @@ export function defaultState() {
       candleLimit: 500,
     },
     strategies: [],
-    watchlist: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+    watchlist: defaultWatchlist(),
     backtests: [],
     paper: {
       running: false,
@@ -328,6 +333,15 @@ export function migrate(raw) {
   if (v < 4) {
     state.alerts = Array.isArray(raw?.alerts) ? raw.alerts : [];
     state.alertLog = Array.isArray(raw?.alertLog) ? raw.alertLog : [];
+  }
+  if (v < 5) {
+    // v5 widens the default watchlist with volatile pairs. Only untouched
+    // defaults are upgraded; curated user lists stay exactly as they are.
+    const oldDefault = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+    const current = state.watchlist ?? [];
+    const isOldDefault = current.length === oldDefault.length
+      && oldDefault.every((sym) => current.includes(sym));
+    if (isOldDefault) state.watchlist = defaultWatchlist();
   }
 
   state.settings = { ...defaultState().settings, ...(state.settings ?? {}) };

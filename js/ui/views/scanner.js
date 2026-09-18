@@ -2,8 +2,8 @@
 
 import { h, stat, table, pill, toast, bar, fmtNum, fmtPct, signClass } from '../dom.js';
 import { state, store, emit, navigate, loadCandles, market } from '../state.js';
-import { sanitizeCandles } from '../../data/market.js';
-import { SCAN_PRESETS, getPreset, scanMarket, summariseScan } from '../../core/scanner.js';
+import { MAJOR_SYMBOLS, VOLATILE_SYMBOLS, sanitizeCandles } from '../../data/market.js';
+import { SCAN_PRESETS, scanMarket, summariseScan } from '../../core/scanner.js';
 
 const TREND_LABEL = { up: 'rast', down: 'pokles', side: 'bočný', unknown: '?' };
 const TREND_KIND = { up: 'ok', down: 'err', side: 'warn', unknown: 'idle' };
@@ -17,7 +17,9 @@ export function render() {
       h('h2', null, 'Skenovať trh'),
       h('p', { class: 'muted small' }, `Prejde viac párov cez ${SCAN_PRESETS.length} signálov naraz (offline aj online) a zoradí ich podľa sily.`)),
     h('div', { class: 'actions' },
-      h('button', { class: 'btn', type: 'button', onclick: useWatchlist }, 'Použiť watchlist'),
+      h('button', { class: 'btn', type: 'button', title: 'Hlavné a likvidné páry', onclick: () => useSymbols(MAJOR_SYMBOLS, 'Hlavné páry') }, 'Hlavné (' + MAJOR_SYMBOLS.length + ')'),
+      h('button', { class: 'btn', type: 'button', title: 'Memecoiny a high-beta alty s veľkými výkyvmi', onclick: () => useSymbols(VOLATILE_SYMBOLS, 'Volatilné páry') }, 'Volatilné (' + VOLATILE_SYMBOLS.length + ')'),
+      h('button', { class: 'btn', type: 'button', onclick: useWatchlist }, 'Watchlist'),
       h('button', { class: 'btn primary', type: 'button', disabled: state.scanRunning, onclick: runScan },
         state.scanRunning ? 'Skenujem…' : 'Spustiť sken'))));
 
@@ -77,11 +79,18 @@ function parseSymbols(text) {
     .map((s) => s.trim().toUpperCase())
     .filter((s) => /^[A-Z0-9]{4,20}$/.test(s))
     .filter((s, i, arr) => arr.indexOf(s) === i)
-    .slice(0, 24);
+    .slice(0, 48);
 }
 
 function useWatchlist() {
   state.scanSymbols = [...(store.state.watchlist ?? [])];
+  toast('Watchlist: ' + state.scanSymbols.length + ' párov', 'info');
+  emit();
+}
+
+function useSymbols(list, label) {
+  state.scanSymbols = [...list];
+  toast(label + ': ' + list.length + ' párov', 'info');
   emit();
 }
 
